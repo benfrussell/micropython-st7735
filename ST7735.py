@@ -203,7 +203,7 @@ class ST7735:
         self.set_display_area(x, y, width, height)
         self.send_data(bytes((width * height) * int16_to_bytes(colour)))
 
-    # Decomposes the pixels in the framebuffer into rectangles. Used for faster drawing.
+    # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
     def find_rects_in_frame(self, start_x, end_x, start_y, end_y):
         # Helper function for checking if a line of pixels can extend down one level
@@ -253,7 +253,7 @@ class ST7735:
         font_cache_pos = 0
         all_rects = []
 
-        for c in range(33,127):
+        for c in range(127):
             if c < 33:
                 self.font_cache_lookup[c] = -1
             # Get the frame buffer to draw the character
@@ -310,19 +310,19 @@ class ST7735:
             if symbol_ord < cache_len:
                 # Use the lookup to find where the data for this character is in the font cache
                 font_cache_pos = self.font_cache_lookup[symbol_ord]
-                # The first byte tells you how many rectangles are in this character
-                num_rects = self.font_cache[font_cache_pos] 
-                for rect in range(num_rects):
-                    # Unpack the rectangle data from the font cache
-                    rx = self.font_cache[font_cache_pos + 1]
-                    ry = self.font_cache[font_cache_pos + 2]
-                    rw = self.font_cache[font_cache_pos + 3]
-                    rh = self.font_cache[font_cache_pos + 4] 
-                    self.set_display_area(x_pos + rx, y + ry, rw, rh)
-                    self.send_data(colour_bytes * (rw * rh))
-                    # Advance 4 bytes to the next rectangle
-                    font_cache_pos += 4
-
+                if font_cache_pos > -1:
+                    # The first byte tells you how many rectangles are in this character
+                    num_rects = self.font_cache[font_cache_pos] 
+                    for rect in range(num_rects):
+                        # Unpack the rectangle data from the font cache
+                        rx = self.font_cache[font_cache_pos + 1]
+                        ry = self.font_cache[font_cache_pos + 2]
+                        rw = self.font_cache[font_cache_pos + 3]
+                        rh = self.font_cache[font_cache_pos + 4] 
+                        self.set_display_area(x_pos + rx, y + ry, rw, rh)
+                        self.send_data(colour_bytes * (rw * rh))
+                        # Advance 4 bytes to the next rectangle
+                        font_cache_pos += 4
             x_pos += 8
             if x_pos > self.width:
                 return

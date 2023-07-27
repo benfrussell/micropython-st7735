@@ -37,5 +37,5 @@ print(f"Text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 y = 0
 while y < 200:
-    tft.draw_fast_text(text, 5, 30, random_16bit_color())
+    #tft.draw_fast_text(text, 5, 30, random_16bit_color())
     y += 1
