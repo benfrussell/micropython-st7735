@@ -12,3 +12,5 @@ Tested using the [DFRobot 0.96" 160x80 Color SPI TFT Display](https://www.dfrobo
 * Drawing rectangles
 * Basic text drawing
 * Fast text drawing using an ASCII character font cache
+* Line drawing
+* Ellipse drawing

@@ -111,6 +111,7 @@ def int16_to_bytes(i: int):
     return bytes([(i >> 8) & 0xFF, i & 0xFF])
 
 bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
+bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
 
 def get_mono_framebuf_pixel(framebuf, buf_width, x, y):
     pos = (y * buf_width) + x
@@ -118,6 +119,14 @@ def get_mono_framebuf_pixel(framebuf, buf_width, x, y):
     pos = int((pos - mod) / 8)
     return (framebuf[pos] & bitmask[mod]) > 0
 
+def set_mono_framebuf_pixel(framebuf, buf_width, x, y, p):
+    pos = (y * buf_width) + x
+    mod = pos % 8
+    pos = int((pos - mod) / 8)
+    if p == 0:
+        framebuf[pos] = framebuf[pos] & bitmask_inv[mod]
+    else:
+        framebuf[pos] = framebuf[pos] | bitmask[mod]
 
 class ST7735:
     def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
@@ -196,12 +205,12 @@ class ST7735:
         # Start memory write
         self.send_command(ST7735_RAMWR)
 
-    def fill_screen(self, colour):
-        self.fill_rectangle(0, 0, self.width, self.height, colour)
+    def fill_screen(self, c):
+        self.fill_rectangle(0, 0, self.width, self.height, c)
 
-    def fill_rectangle(self, x, y, width, height, colour):
+    def fill_rectangle(self, x, y, width, height, c):
         self.set_display_area(x, y, width, height)
-        self.send_data(bytes((width * height) * int16_to_bytes(colour)))
+        self.send_data(bytes((width * height) * int16_to_bytes(c)))
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
@@ -227,7 +236,7 @@ class ST7735:
             visited_pos = buf_y * buf_width
             for buf_x in range(start_x,end_x+1):
                 # If the pixel is filled and hasn't been visited yet, expand right by one
-                if visited_pos not in visited and get_mono_framebuf_pixel(buf, buf_width, buf_x, buf_y):
+                if get_mono_framebuf_pixel(buf, buf_width, buf_x, buf_y): #visited_pos not in visited and 
                     rect_width += 1
                 # If the pixel was not filled or was visited, and we have identified a filled area (width > 0)
                 elif rect_width > 0:
@@ -236,10 +245,12 @@ class ST7735:
                     next_row = buf_y + rect_height
                     while can_expand_down(rect_start_x, buf_x, next_row, buf, buf_width):
                         # If it did expand down, add all of the positions of pixels that were expanded to into the visited list
-                        visited += range((next_row * buf_width) + rect_start_x, (next_row * buf_width) + buf_x)
+                        #visited += range((next_row * buf_width) + rect_start_x, (next_row * buf_width) + buf_x)
+                        for exp_x in range(rect_start_x, buf_x):
+                            set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
                         next_row += 1
                         rect_height += 1
-
+                    
                     rects += (rect_start_x, buf_y, rect_width, rect_height)
                     rect_width = 0
                     rect_height = 1
@@ -270,11 +281,15 @@ class ST7735:
         self.font_cache = array("B", all_rects)
         print(f"Cache time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
+    def draw_rect_bytes(self, rect_bytes, c_bytes, offset_x=0, offset_y=0):
+        self.set_display_area(offset_x + rect_bytes[0], offset_y + rect_bytes[1], rect_bytes[2], rect_bytes[3])
+        self.send_data(c_bytes * (rect_bytes[2] * rect_bytes[3]))
+
     # Draw the pixels in the region defined in the frame buffer
-    def draw_frame_buffer(self, start_x, end_x, start_y, end_y, colour):
+    def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c):
         buf = memoryview(self.draw_buf)
         buf_width = self.width
-        colour_bytes = bytes(int16_to_bytes(colour))
+        c_bytes = bytes(int16_to_bytes(c))
         # Gain a few ms by making local function references
         get_pixel = get_mono_framebuf_pixel
         set_display_area = self.set_display_area
@@ -287,23 +302,29 @@ class ST7735:
                     draw_width += 1
                 elif draw_width > 0:
                     set_display_area(draw_x - draw_width, draw_y, draw_width, 1)
-                    send_data(colour_bytes * draw_width)
+                    send_data(c_bytes * draw_width)
                     draw_width = 0
+
+    def draw_frame_rects(self, start_x, end_x, start_y, end_y, c):
+        rect_bytes = self.find_rects_in_frame(start_x, end_x, start_y, end_y)
+        c_bytes = int16_to_bytes(c)
+        for r in range(-1, len(rect_bytes) - 1, 4):
+            self.draw_rect_bytes(rect_bytes[r + 1:r + 5], c_bytes)
     
     # Draw text pixel by pixel
-    def draw_text(self, text, x, y, colour):
+    def draw_text(self, text, x, y, c):
         text_width = min(8 * len(text), self.width - x)
         text_height = min(8, self.height - y)
 
         self.frame_buf.fill_rect(x, y, text_width, text_height, 0)
         self.frame_buf.text(text, x, y, 1)
-        self.draw_frame_buffer(x, x + text_width, y, y + text_height, colour)
+        self.draw_frame_pixels(x, x + text_width, y, y + text_height, c)
 
     # Draw text using the font cache
-    def draw_fast_text(self, text: str, x, y, colour):
+    def draw_fast_text(self, text: str, x, y, c):
         x_pos = x
         cache_len = len(self.font_cache_lookup)
-        colour_bytes = bytes(int16_to_bytes(colour))
+        c_bytes = bytes(int16_to_bytes(c))
 
         for symbol in text:
             symbol_ord = ord(symbol)
@@ -314,17 +335,34 @@ class ST7735:
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
                     for rect in range(num_rects):
-                        # Unpack the rectangle data from the font cache
-                        rx = self.font_cache[font_cache_pos + 1]
-                        ry = self.font_cache[font_cache_pos + 2]
-                        rw = self.font_cache[font_cache_pos + 3]
-                        rh = self.font_cache[font_cache_pos + 4] 
-                        self.set_display_area(x_pos + rx, y + ry, rw, rh)
-                        self.send_data(colour_bytes * (rw * rh))
+                        self.draw_rect_bytes(self.font_cache[font_cache_pos + 1:font_cache_pos + 5], c_bytes, offset_x=x_pos, offset_y=y)
                         # Advance 4 bytes to the next rectangle
                         font_cache_pos += 4
             x_pos += 8
             if x_pos > self.width:
                 return
 
+    def draw_hline(self, x, y, w, c):
+        self.fill_rectangle(x, y, w, 1, c)
 
+    def draw_vline(self, x, y, h, c):
+        self.fill_rectangle(x, y, 1, h, c)
+
+    def draw_line(self, x1, y1, x2, y2, c):
+        min_x = min(x1, x2)
+        max_x = max(x1, x2)
+        min_y = min(y1, y2)
+        max_y = max(y1, y2)
+        self.frame_buf.fill_rect(min_x, min_y, max_x - min_x, max_y - min_y, 0)
+        self.frame_buf.line(x1, y1, x2, y2, 1)
+        self.draw_frame_pixels(min_x, max_x, min_y, max_y, c)
+
+    def draw_ellipse_slow(self, x, y, rx, ry, c, fill=True, quads=15):
+        self.frame_buf.fill_rect(x - rx, y - ry, rx * 2, ry * 2, 0)
+        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, quads)
+        self.draw_frame_pixels(x - rx, x + rx, y - ry, y + ry, c)
+
+    def draw_ellipse_fast(self, x, y, rx, ry, c, fill=True, quads=15):
+        self.frame_buf.fill_rect(x - rx, y - ry, rx * 2, ry * 2, 0)
+        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, quads)
+        self.draw_frame_rects(x - rx, x + rx, y - ry, y + ry, c)
