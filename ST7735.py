@@ -223,39 +223,35 @@ class ST7735:
                     can_expand = False     
                     break
             return can_expand
+
+        def get_finished_rect(x, y, w, buf, buf_width):
+            h = 1
+            next_row = y + 1
+            while can_expand_down(x, x + w, next_row, buf, buf_width):
+                # If it did expand down, add all of the positions of pixels that were expanded to into the visited list
+                for exp_x in range(x, x + w):
+                    set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
+                next_row += 1
+                h += 1
+            return (x, y, w, h)
     
         buf = memoryview(self.draw_buf)
         buf_width = self.width
-        visited = []
-        visited_pos = 0
         rects = []
         # For each row and column
         for buf_y in range(start_y,end_y+1):
             rect_width = 0
-            rect_height = 1
-            visited_pos = buf_y * buf_width
             for buf_x in range(start_x,end_x+1):
-                # If the pixel is filled and hasn't been visited yet, expand right by one
+                # If the pixel is filled expand right by one
                 if get_mono_framebuf_pixel(buf, buf_width, buf_x, buf_y): #visited_pos not in visited and 
                     rect_width += 1
-                # If the pixel was not filled or was visited, and we have identified a filled area (width > 0)
+                # If the pixel was not filled, we have 3finished identifying a filled area (width > 0)
                 elif rect_width > 0:
-                    # See how far we can expand down at the position with this width
-                    rect_start_x = buf_x - rect_width
-                    next_row = buf_y + rect_height
-                    while can_expand_down(rect_start_x, buf_x, next_row, buf, buf_width):
-                        # If it did expand down, add all of the positions of pixels that were expanded to into the visited list
-                        #visited += range((next_row * buf_width) + rect_start_x, (next_row * buf_width) + buf_x)
-                        for exp_x in range(rect_start_x, buf_x):
-                            set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
-                        next_row += 1
-                        rect_height += 1
-                    
-                    rects += (rect_start_x, buf_y, rect_width, rect_height)
+                    # Get finished rect - this will expand down as far as possible with the current width
+                    rects += get_finished_rect(buf_x - rect_width, buf_y, rect_width, buf, buf_width)
                     rect_width = 0
-                    rect_height = 1
-                visited_pos += 1
-
+            if rect_width > 0:
+                rects += get_finished_rect(buf_x - rect_width, buf_y, rect_width, buf, buf_width)
         return rects
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
@@ -281,10 +277,6 @@ class ST7735:
         self.font_cache = array("B", all_rects)
         print(f"Cache time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
-    def draw_rect_bytes(self, rect_bytes, c_bytes, offset_x=0, offset_y=0):
-        self.set_display_area(offset_x + rect_bytes[0], offset_y + rect_bytes[1], rect_bytes[2], rect_bytes[3])
-        self.send_data(c_bytes * (rect_bytes[2] * rect_bytes[3]))
-
     # Draw the pixels in the region defined in the frame buffer
     def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c):
         buf = memoryview(self.draw_buf)
@@ -309,7 +301,8 @@ class ST7735:
         rect_bytes = self.find_rects_in_frame(start_x, end_x, start_y, end_y)
         c_bytes = int16_to_bytes(c)
         for r in range(-1, len(rect_bytes) - 1, 4):
-            self.draw_rect_bytes(rect_bytes[r + 1:r + 5], c_bytes)
+            self.set_display_area(rect_bytes[r + 1], rect_bytes[r + 2], rect_bytes[r + 3], rect_bytes[r + 4])
+            self.send_data(c_bytes * (rect_bytes[r + 3] * rect_bytes[r + 4]))
     
     # Draw text pixel by pixel
     def draw_text(self, text, x, y, c):
@@ -335,7 +328,13 @@ class ST7735:
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
                     for rect in range(num_rects):
-                        self.draw_rect_bytes(self.font_cache[font_cache_pos + 1:font_cache_pos + 5], c_bytes, offset_x=x_pos, offset_y=y)
+                        #self.draw_rect_bytes(self.font_cache[font_cache_pos + 1:font_cache_pos + 5], c_bytes, offset_x=x_pos, offset_y=y)
+                        self.set_display_area(
+                            self.font_cache[font_cache_pos + 1] + x_pos, 
+                            self.font_cache[font_cache_pos + 2] + y, 
+                            self.font_cache[font_cache_pos + 3], 
+                            self.font_cache[font_cache_pos + 4])
+                        self.send_data(c_bytes * (self.font_cache[font_cache_pos + 3] * self.font_cache[font_cache_pos + 4]))
                         # Advance 4 bytes to the next rectangle
                         font_cache_pos += 4
             x_pos += 8
@@ -357,12 +356,20 @@ class ST7735:
         self.frame_buf.line(x1, y1, x2, y2, 1)
         self.draw_frame_pixels(min_x, max_x, min_y, max_y, c)
 
-    def draw_ellipse_slow(self, x, y, rx, ry, c, fill=True, quads=15):
+    def draw_ellipse_slow(self, x, y, rx, ry, c, fill=True):
         self.frame_buf.fill_rect(x - rx, y - ry, rx * 2, ry * 2, 0)
-        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, quads)
+        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, 2)
         self.draw_frame_pixels(x - rx, x + rx, y - ry, y + ry, c)
 
-    def draw_ellipse_fast(self, x, y, rx, ry, c, fill=True, quads=15):
-        self.frame_buf.fill_rect(x - rx, y - ry, rx * 2, ry * 2, 0)
-        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, quads)
-        self.draw_frame_rects(x - rx, x + rx, y - ry, y + ry, c)
+    def draw_ellipse_fast(self, x, y, rx, ry, c, fill=True):
+        # Fill the top-left quadrant and use that to draw the whole shape
+        self.frame_buf.fill_rect(x - rx, y - ry, rx, ry, 0)
+        self.frame_buf.ellipse(x, y, rx, ry, 1, fill, 2)
+        
+        rect_bytes = self.find_rects_in_frame(x - rx, x, y - ry, y)
+        c_bytes = int16_to_bytes(c)
+        for r in range(-1, len(rect_bytes) - 1, 4):
+            w = rect_bytes[r + 3]
+            h = rect_bytes[r + 4] * 2
+            self.set_display_area(rect_bytes[r + 1], rect_bytes[r + 2], w, h)
+            self.send_data(c_bytes * (w * h))
