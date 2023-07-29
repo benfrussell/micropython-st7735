@@ -14,45 +14,41 @@ def random_16bit_color():
 
     return color_16bit
 
-tft = ST7735(cache_font=False)
+tft = ST7735(cache_font=True)
 tft.tft_initialize()
 
-# start = time.ticks_ms()
-# fills = 20
-# while fills > 0:
-#     tft.fill_screen(random_16bit_color())
-#     fills -= 1
-# print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+start = time.ticks_ms()
+fills = 20
+while fills > 0:
+    tft.fill_screen(random_16bit_color())
+    fills -= 1
+print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 
-# start = time.ticks_ms()
-# for r in range(11):
-#     text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-#     tft.draw_text(text, 5, r * 8 + 5, 0x0000)
-# print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-# tft.fill_screen(0xffff)
-
-# start = time.ticks_ms()
-# for r in range(11):
-#     text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-#     tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
-# print(f"Cahced text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-# tft.fill_screen(0xffff)
-
-# start = time.ticks_ms()
-# lines = 20
-# while lines > 0:
-#     tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
-#     lines -= 1
-# print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+start = time.ticks_ms()
+for r in range(11):
+    text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+    tft.draw_text(text, 5, r * 8 + 5, 0x0000)
+print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 tft.fill_screen(0xffff)
 
 start = time.ticks_ms()
-tft.draw_ellipse_slow(40, 40, 37, 37, 0x0000)
-print(f"Ellipse slow time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+for r in range(11):
+    text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+    tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
+print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+tft.fill_screen(0xffff)
 
 start = time.ticks_ms()
-tft.draw_ellipse_fast(40, 120, 37, 37, 0xF000)
+lines = 20
+while lines > 0:
+    tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
+    lines -= 1
+print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+
+tft.fill_screen(0xffff)
+
+start = time.ticks_ms()
+tft.draw_ellipse(40, 120, 37, 37, 0xF000)
 print(f"Ellipse fast time: {time.ticks_diff(time.ticks_ms(), start)} ms")
