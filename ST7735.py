@@ -362,7 +362,7 @@ class ST7735:
         buf_width = self.width
         c_bytes = int16_to_bytes(c)
         # For each row and column
-        rect_height = ry * 2
+        rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
             rect_width = 0
             rect_start_x = -1
@@ -382,6 +382,15 @@ class ST7735:
             # Draw the right rectangle
             self.set_display_area(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height)
             self.send_data(c_data)
-            rect_height -= 2
+
+            if fill is False:
+                # Draw the left bottom rectangle
+                self.set_display_area(rect_start_x, y + (y - buf_y), rect_width, rect_height)
+                self.send_data(c_data)
+                # Draw the right bottom rectangle
+                self.set_display_area(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height)
+                self.send_data(c_data)
+            else:
+                rect_height -= 2
         
         

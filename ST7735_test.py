@@ -50,5 +50,9 @@ print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 tft.fill_screen(0xffff)
 
 start = time.ticks_ms()
+tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
+print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+start = time.ticks_ms()
 tft.draw_ellipse(40, 120, 37, 37, 0xF000)
-print(f"Ellipse fast time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
