@@ -56,3 +56,12 @@ print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 start = time.ticks_ms()
 tft.draw_ellipse(40, 120, 37, 37, 0xF000)
 print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+tft.fill_screen(0xffff)
+
+start = time.ticks_ms()
+t = 1
+while t <= 40:
+    tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
+    t += 1
+print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")

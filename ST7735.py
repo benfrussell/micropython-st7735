@@ -206,13 +206,6 @@ class ST7735:
         # Start memory write
         self.send_command(ST7735_RAMWR)
 
-    def fill_screen(self, c):
-        self.fill_rectangle(0, 0, self.width, self.height, c)
-
-    def fill_rectangle(self, x, y, width, height, c):
-        self.set_display_area(x, y, width, height)
-        self.send_data(bytes((width * height) * int16_to_bytes(c)))
-
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
     def find_rects_in_frame(self, start_x, end_x, start_y, end_y):
@@ -282,7 +275,7 @@ class ST7735:
     def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
         buf = memoryview(self.draw_buf)
         buf_width = self.width
-        c_bytes = bytes(int16_to_bytes(c))
+        c_bytes = int16_to_bytes(c)
         # Gain a few ms by making local function references
         get_pixel = get_mono_framebuf_pixel
         set_display_area = self.set_display_area
@@ -300,7 +293,20 @@ class ST7735:
                     # Convex shapes will only have one solid line per row
                     if convex:
                         break
-    
+
+    def fill_screen(self, c):
+        self.draw_rectangle(0, 0, self.width, self.height, c)
+
+    def draw_rectangle(self, x, y, width, height, c, fill=True, thickness=1):
+        if fill:
+            self.set_display_area(x, y, width, height)
+            self.send_data((width * height) * int16_to_bytes(c))
+        else:
+            self.draw_rectangle(x, y, width, thickness, c)
+            self.draw_rectangle(x, y + height - thickness, width, thickness, c)
+            self.draw_rectangle(x, y + thickness, thickness, height - (thickness * 2), c)
+            self.draw_rectangle(x + width - thickness, y + thickness, thickness, height - (thickness * 2), c)
+
     # Draw text pixel by pixel
     def draw_text(self, text, x, y, c):
         text_width = min(8 * len(text), self.width - x)
@@ -314,7 +320,7 @@ class ST7735:
     def draw_fast_text(self, text: str, x, y, c):
         x_pos = x
         cache_len = len(self.font_cache_lookup)
-        c_bytes = bytes(int16_to_bytes(c))
+        c_bytes = int16_to_bytes(c)
 
         for symbol in text:
             symbol_ord = ord(symbol)
@@ -325,7 +331,6 @@ class ST7735:
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
                     for rect in range(num_rects):
-                        #self.draw_rect_bytes(self.font_cache[font_cache_pos + 1:font_cache_pos + 5], c_bytes, offset_x=x_pos, offset_y=y)
                         self.set_display_area(
                             self.font_cache[font_cache_pos + 1] + x_pos, 
                             self.font_cache[font_cache_pos + 2] + y, 
@@ -339,10 +344,10 @@ class ST7735:
                 return
 
     def draw_hline(self, x, y, w, c):
-        self.fill_rectangle(x, y, w, 1, c)
+        self.draw_rectangle(x, y, w, 1, c)
 
     def draw_vline(self, x, y, h, c):
-        self.fill_rectangle(x, y, 1, h, c)
+        self.draw_rectangle(x, y, 1, h, c)
 
     def draw_line(self, x1, y1, x2, y2, c):
         min_x = min(x1, x2)
