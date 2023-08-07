@@ -2,9 +2,8 @@ from machine import Pin, SPI
 import time
 import framebuf
 from array import array
-from math import ceil
+from math import ceil, log, floor
 import gc
-import random
 
 ST7735_NOP          = const(0x00)
 ST7735_SWRESET      = const(0x01)
@@ -114,11 +113,38 @@ def int16_to_bytes(i: int):
 bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
 bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
 
-def get_mono_framebuf_pixel(framebuf, buf_width, x, y):
-    pos = (y * buf_width) + x
-    mod = pos % 8
-    pos = int((pos - mod) / 8)
-    return (framebuf[pos] & bitmask[mod]) > 0
+def yield_px_in_row(framebuf, buf_width, y, start_x=0, end_x=80):
+    bottom_pos = y * buf_width + start_x
+    top_pos = bottom_pos + end_x
+    start_byte = floor(bottom_pos / 8)
+    pos = start_byte * 8
+    for b in framebuf[start_byte:ceil(top_pos / 8) + 1]:
+        while b > 0:
+            bitlen = 7 - int(log(b,2))
+            b = b & bitmask_inv[bitlen]
+            new_pos = pos + bitlen
+            if new_pos < bottom_pos:
+                continue
+            elif new_pos > top_pos:
+                return
+            # Yield the x
+            yield new_pos % buf_width
+        pos += 8
+
+def yield_lines_in_row(framebuf, buf_width, y, start_x=0, end_x=80):
+    next_x = start_x
+    line_width = 0
+    for px in yield_px_in_row(framebuf, buf_width, y, start_x, end_x):
+        if px == next_x:
+            line_width += 1
+            next_x += 1
+            continue
+        elif line_width > 0:
+            yield next_x - line_width - 1, next_x - 1
+        next_x = px + 1
+        line_width = 1
+    if line_width > 0:
+        yield next_x - line_width - 1, next_x - 1
 
 def set_mono_framebuf_pixel(framebuf, buf_width, x, y, p):
     pos = (y * buf_width) + x
@@ -211,18 +237,16 @@ class ST7735:
     def find_rects_in_frame(self, start_x, end_x, start_y, end_y):
         # Helper function for checking if a line of pixels can extend down one level
         def can_expand_down(start_x, end_x, y, buf, buf_width):
-            can_expand = True
-            for x in range(start_x, end_x):
-                if get_mono_framebuf_pixel(buf, buf_width, x, y) is False:
-                    can_expand = False     
-                    break
-            return can_expand
+            #for x in range(start_x, end_x):
+            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
+                # if get_mono_framebuf_pixel(buf, buf_width, x, y) is False:
+                return line_start_x == start_x and line_end_x == end_x
 
         def get_finished_rect(x, y, w, buf, buf_width):
             h = 1
             next_row = y + 1
             while can_expand_down(x, x + w, next_row, buf, buf_width):
-                # If it did expand down, add all of the positions of pixels that were expanded to into the visited list
+                # If it did expand down, unset the pixels expanded
                 for exp_x in range(x, x + w):
                     set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
                 next_row += 1
@@ -233,19 +257,21 @@ class ST7735:
         buf_width = self.width
         rects = []
         # For each row and column
-        for buf_y in range(start_y,end_y+1):
-            rect_width = 0
-            for buf_x in range(start_x,end_x+1):
+        for y in range(start_y,end_y+1):
+            #rect_width = 0
+            #for buf_x in range(start_x,end_x+1):
+            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
+                rects += get_finished_rect(line_start_x, y, line_end_x - line_start_x, buf, buf_width)
                 # If the pixel is filled expand right by one
-                if get_mono_framebuf_pixel(buf, buf_width, buf_x, buf_y):
-                    rect_width += 1
-                # If the pixel was not filled, we have 3finished identifying a filled area (width > 0)
-                elif rect_width > 0:
-                    # Get finished rect - this will expand down as far as possible with the current width
-                    rects += get_finished_rect(buf_x - rect_width, buf_y, rect_width, buf, buf_width)
-                    rect_width = 0
-            if rect_width > 0:
-                rects += get_finished_rect(end_x - rect_width, buf_y, rect_width, buf, buf_width)
+                # if get_mono_framebuf_pixel(buf, buf_width, buf_x, y):
+                #     rect_width += 1
+                # # If the pixel was not filled, we have 3finished identifying a filled area (width > 0)
+                # elif rect_width > 0:
+                #     # Get finished rect - this will expand down as far as possible with the current width
+                #     rects += get_finished_rect(buf_x - rect_width, y, rect_width, buf, buf_width)
+                #     rect_width = 0
+            # if rect_width > 0:
+            #     rects += get_finished_rect(end_x - rect_width, y, rect_width, buf, buf_width)
         return rects
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
@@ -277,22 +303,16 @@ class ST7735:
         buf_width = self.width
         c_bytes = int16_to_bytes(c)
         # Gain a few ms by making local function references
-        get_pixel = get_mono_framebuf_pixel
         set_display_area = self.set_display_area
         send_data = self.send_data
-        
-        for draw_y in range(start_y, end_y):
-            draw_width = 0
-            for draw_x in range(start_x, end_x):
-                if get_pixel(buf, buf_width, draw_x, draw_y):
-                    draw_width += 1
-                elif draw_width > 0:
-                    set_display_area(draw_x - draw_width, draw_y, draw_width, 1)
-                    send_data(c_bytes * draw_width)
-                    draw_width = 0
-                    # Convex shapes will only have one solid line per row
-                    if convex:
-                        break
+
+        for y in range(start_y, end_y + 1):
+            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
+                draw_width = line_end_x - line_start_x
+                set_display_area(line_start_x, y, draw_width, 1)
+                send_data(c_bytes * draw_width)
+                if convex:
+                    break
 
     def fill_screen(self, c):
         self.draw_rectangle(0, 0, self.width, self.height, c)
@@ -369,17 +389,11 @@ class ST7735:
         # For each row and column
         rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
-            rect_width = 0
-            rect_start_x = -1
-            for buf_x in range(x-rx,x):
-                # If the pixel is filled expand right by one
-                if get_mono_framebuf_pixel(buf, buf_width, buf_x, buf_y):
-                    if rect_start_x == -1:
-                        rect_start_x = buf_x
-                    rect_width += 1
-                # If the pixel was not filled, we have finished identifying a filled area (width > 0)
-                elif rect_width > 0:
-                    break
+            try:
+                rect_start_x,rect_end_x = next(yield_lines_in_row(buf, buf_width, buf_y, x-rx, x))
+            except StopIteration:
+                continue
+            rect_width = rect_end_x - rect_start_x
             c_data = c_bytes * (rect_width * rect_height)
             # Draw the left rectangle
             self.set_display_area(rect_start_x, buf_y, rect_width, rect_height)
