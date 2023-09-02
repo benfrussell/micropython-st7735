@@ -14,54 +14,78 @@ def random_16bit_color():
 
     return color_16bit
 
+def test_tft(tft):
+    tft.tft_initialize()
+
+    start = time.ticks_ms()
+    fills = 20
+    while fills > 0:
+        tft.fill_screen(random_16bit_color())
+        fills -= 1
+    print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+
+    start = time.ticks_ms()
+    for r in range(11):
+        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+        tft.draw_text(text, 5, r * 8 + 5, 0x0000)
+    print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    for r in range(11):
+        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+        tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
+    print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    lines = 20
+    while lines > 0:
+        tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
+        lines -= 1
+    print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
+    print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    start = time.ticks_ms()
+    tft.draw_ellipse(40, 120, 37, 37, 0xF000)
+    print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    t = 1
+    while t <= 40:
+        tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
+        t += 1
+    print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
+
+
+def test_text(tft, y):
+    tft.fill_screen(0xAAAA)
+    start = time.ticks_ms()
+    for r in range(11):
+        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+        tft.draw_text(text, 5, r * 8 + 5 + y, 0x0000)
+    print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+def test_exclaim():
+    tft = ST7735(cache_font=False)
+    tft.tft_initialize()
+    tft.frame_buf.fill_rect(0, 0, 8, 8, 0)
+    tft.frame_buf.text("!", 0, 0, 1)
+    char_rects = tft.find_rects_in_frame(0, 7, 0, 7)
+    print(len(char_rects))
+
+# test_exclaim()
+
 tft = ST7735(cache_font=True)
 tft.tft_initialize()
+test_text(tft, 0)
 
-start = time.ticks_ms()
-fills = 20
-while fills > 0:
-    tft.fill_screen(random_16bit_color())
-    fills -= 1
-print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
-
-start = time.ticks_ms()
-for r in range(11):
-    text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-    tft.draw_text(text, 5, r * 8 + 5, 0x0000)
-print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-tft.fill_screen(0xffff)
-
-start = time.ticks_ms()
-for r in range(11):
-    text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-    tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
-print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-tft.fill_screen(0xffff)
-
-start = time.ticks_ms()
-lines = 20
-while lines > 0:
-    tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
-    lines -= 1
-print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
-
-tft.fill_screen(0xffff)
-
-start = time.ticks_ms()
-tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
-print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-start = time.ticks_ms()
-tft.draw_ellipse(40, 120, 37, 37, 0xF000)
-print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-tft.fill_screen(0xffff)
-
-start = time.ticks_ms()
-t = 1
-while t <= 40:
-    tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
-    t += 1
-print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")

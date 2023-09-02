@@ -140,11 +140,11 @@ def yield_lines_in_row(framebuf, buf_width, y, start_x=0, end_x=80):
             next_x += 1
             continue
         elif line_width > 0:
-            yield next_x - line_width - 1, next_x - 1
+            yield next_x - line_width, next_x - 1
         next_x = px + 1
         line_width = 1
     if line_width > 0:
-        yield next_x - line_width - 1, next_x - 1
+        yield next_x - line_width, next_x - 1
 
 def set_mono_framebuf_pixel(framebuf, buf_width, x, y, p):
     pos = (y * buf_width) + x
@@ -239,39 +239,27 @@ class ST7735:
         def can_expand_down(start_x, end_x, y, buf, buf_width):
             #for x in range(start_x, end_x):
             for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
-                # if get_mono_framebuf_pixel(buf, buf_width, x, y) is False:
                 return line_start_x == start_x and line_end_x == end_x
 
-        def get_finished_rect(x, y, w, buf, buf_width):
+        def get_expanded_rect(start_x, end_x, y, buf, buf_width):
             h = 1
             next_row = y + 1
-            while can_expand_down(x, x + w, next_row, buf, buf_width):
+            while can_expand_down(start_x, end_x, next_row, buf, buf_width):
                 # If it did expand down, unset the pixels expanded
-                for exp_x in range(x, x + w):
+                for exp_x in range(start_x, end_x + 1):
                     set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
                 next_row += 1
                 h += 1
-            return (x, y, w, h)
+            return (start_x, y, start_x - end_x + 1, h)
     
         buf = memoryview(self.draw_buf)
         buf_width = self.width
         rects = []
         # For each row and column
         for y in range(start_y,end_y+1):
-            #rect_width = 0
-            #for buf_x in range(start_x,end_x+1):
             for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
-                rects += get_finished_rect(line_start_x, y, line_end_x - line_start_x, buf, buf_width)
-                # If the pixel is filled expand right by one
-                # if get_mono_framebuf_pixel(buf, buf_width, buf_x, y):
-                #     rect_width += 1
-                # # If the pixel was not filled, we have 3finished identifying a filled area (width > 0)
-                # elif rect_width > 0:
-                #     # Get finished rect - this will expand down as far as possible with the current width
-                #     rects += get_finished_rect(buf_x - rect_width, y, rect_width, buf, buf_width)
-                #     rect_width = 0
-            # if rect_width > 0:
-            #     rects += get_finished_rect(end_x - rect_width, y, rect_width, buf, buf_width)
+                rects += get_expanded_rect(line_start_x, line_end_x, y, buf, buf_width)
+
         return rects
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
