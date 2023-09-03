@@ -38,24 +38,9 @@ def test_tft(tft):
         tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
     print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
-    tft.fill_screen(0xffff)
+    test_lines(tft)
 
-    start = time.ticks_ms()
-    lines = 20
-    while lines > 0:
-        tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
-        lines -= 1
-    print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
-
-    tft.fill_screen(0xffff)
-
-    start = time.ticks_ms()
-    tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
-    print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-    start = time.ticks_ms()
-    tft.draw_ellipse(40, 120, 37, 37, 0xF000)
-    print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+    test_ellipses(tft)
 
     tft.fill_screen(0xffff)
 
@@ -72,8 +57,28 @@ def test_text(tft, y):
     start = time.ticks_ms()
     for r in range(11):
         text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_text(text, 5, r * 8 + 5 + y, 0x0000)
-    print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+        tft.draw_fast_text(text, 5, r * 8 + 5 + y, 0x0000)
+    print(f"Text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+def test_ellipses(tft):
+    tft.fill_screen(0xffff)
+    start = time.ticks_ms()
+    tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
+    print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    start = time.ticks_ms()
+    tft.draw_ellipse(40, 120, 37, 37, 0xF000)
+    print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+def test_lines(tft):
+    tft.fill_screen(0xffff)
+    start = time.ticks_ms()
+    lines = 20
+    while lines > 0:
+        tft.draw_line(0, random.randint(0, 160), 80, random.randint(0, 160), random_16bit_color())
+        lines -= 1
+    print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+
 
 def test_exclaim():
     tft = ST7735(cache_font=False)
@@ -85,7 +90,14 @@ def test_exclaim():
 
 # test_exclaim()
 
+# tft = ST7735(cache_font=True)
+# tft.tft_initialize()
+# test_text(tft, 0)
+
+# tft = ST7735(cache_font=False)
+# tft.tft_initialize()
+# test_lines(tft)
+
 tft = ST7735(cache_font=True)
-tft.tft_initialize()
-test_text(tft, 0)
+test_tft(tft)
 

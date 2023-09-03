@@ -250,7 +250,7 @@ class ST7735:
                     set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
                 next_row += 1
                 h += 1
-            return (start_x, y, start_x - end_x + 1, h)
+            return (start_x, y, end_x - start_x + 1, h)
     
         buf = memoryview(self.draw_buf)
         buf_width = self.width
@@ -271,6 +271,7 @@ class ST7735:
         for c in range(127):
             if c < 33:
                 self.font_cache_lookup[c] = -1
+                continue
             # Get the frame buffer to draw the character
             self.frame_buf.fill_rect(0, 0, 8, 8, 0)
             self.frame_buf.text(chr(c), 0, 0, 1)
@@ -296,7 +297,7 @@ class ST7735:
 
         for y in range(start_y, end_y + 1):
             for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
-                draw_width = line_end_x - line_start_x
+                draw_width = line_end_x - line_start_x + 1
                 set_display_area(line_start_x, y, draw_width, 1)
                 send_data(c_bytes * draw_width)
                 if convex:
@@ -381,7 +382,7 @@ class ST7735:
                 rect_start_x,rect_end_x = next(yield_lines_in_row(buf, buf_width, buf_y, x-rx, x))
             except StopIteration:
                 continue
-            rect_width = rect_end_x - rect_start_x
+            rect_width = rect_end_x - rect_start_x + 1
             c_data = c_bytes * (rect_width * rect_height)
             # Draw the left rectangle
             self.set_display_area(rect_start_x, buf_y, rect_width, rect_height)
