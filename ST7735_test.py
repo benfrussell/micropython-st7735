@@ -76,6 +76,12 @@ def test_poly(tft):
     tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], 0xAAAA, True, False)
     print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
-tft = ST7735(cache_font=True)
+gc.collect()
+before = gc.mem_alloc()
+tft = ST7735()
 test_tft(tft)
+gc.collect()
+print(f"{gc.mem_alloc() - before} bytes in memory")
+
+
 

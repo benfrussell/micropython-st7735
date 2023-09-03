@@ -3,7 +3,6 @@ import time
 import framebuf
 from array import array
 from math import ceil, log, floor
-import gc
 
 ST7735_NOP          = const(0x00)
 ST7735_SWRESET      = const(0x01)
@@ -168,26 +167,18 @@ class ST7735:
         self.height = height
         self.width = width
 
-        gc.collect()
-        mem = gc.mem_free()
         self.draw_buf_size = ceil((width * height) / 8)
         self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
         self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), width, height, framebuf.MONO_HLSB)
-        gc.collect()
-        print(f"Frame buf size: {mem - gc.mem_free()} bytes")
 
         # Theorhetical max is half of the system frequency (125MHz / 2)
         self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
 
-        gc.collect()
-        mem = gc.mem_free()
         self.font_cache : array
         self.font_cache_lookup : array
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
-        gc.collect()
-        print(f"Cache size: {mem - gc.mem_free()} bytes")
 
     def send_command(self, cmd, args = None):
         self.cs_pin.low()
@@ -211,10 +202,8 @@ class ST7735:
         self.rt_pin.high()
         time.sleep_ms(220)
 
-        start = time.ticks_ms()
         for cmd in init_cmds:
             self.send_command(cmd[0], None if len(cmd) == 1 else cmd[1:])
-        print(f"Init time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
     def set_display_area(self, x, y, w, h):
         # Set column range
@@ -264,7 +253,6 @@ class ST7735:
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
     def build_font_cache(self):
-        start = time.ticks_ms()
         font_cache_pos = 0
         all_rects = []
 
@@ -284,7 +272,6 @@ class ST7735:
             all_rects += [int(len(char_rects) / 4)] + char_rects
 
         self.font_cache = array("B", all_rects)
-        print(f"Cache time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
     # Draw the pixels in the region defined in the frame buffer
     def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
