@@ -369,11 +369,12 @@ class ST7735:
 
     def draw_poly(self, x, y, coords, c, fill=True, convex=False):
         coord_array = array("i", coords)
-        w = self.width - x
-        h = self.height - y
-        self.frame_buf.fill_rect(x, y, w, h, 0)
+        coord_len = len(coord_array)
+        x_max = max([coord_array[i] for i in range(0, coord_len, 2)])
+        y_max = max([coord_array[i] for i in range(1, coord_len, 2)])
+        self.frame_buf.fill_rect(x, y, x_max - x + 1, y_max - y + 1, 0)
         self.frame_buf.poly(x, y, coord_array, c, fill)
-        self.draw_frame_pixels(x, self.width, y, self.height, c, convex)
+        self.draw_frame_pixels(x, x_max, y, y_max, c, convex)
 
     def draw_ellipse(self, x, y, rx, ry, c, fill=True):
         # Fill the top-left quadrant and use that to draw the whole shape

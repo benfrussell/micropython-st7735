@@ -39,8 +39,8 @@ def test_tft(tft):
     print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
     test_lines(tft)
-
     test_ellipses(tft)
+    test_poly(tft)
 
     tft.fill_screen(0xffff)
 
@@ -50,15 +50,6 @@ def test_tft(tft):
         tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
         t += 1
     print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
-
-
-def test_text(tft, y):
-    tft.fill_screen(0xAAAA)
-    start = time.ticks_ms()
-    for r in range(11):
-        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_fast_text(text, 5, r * 8 + 5 + y, 0x0000)
-    print(f"Text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_ellipses(tft):
     tft.fill_screen(0xffff)
@@ -79,30 +70,12 @@ def test_lines(tft):
         lines -= 1
     print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 
-def test_exclaim():
-    tft = ST7735(cache_font=False)
-    tft.tft_initialize()
-    tft.frame_buf.fill_rect(0, 0, 8, 8, 0)
-    tft.frame_buf.text("!", 0, 0, 1)
-    char_rects = tft.find_rects_in_frame(0, 7, 0, 7)
-    print(len(char_rects))
-
 def test_poly(tft):
     tft.fill_screen(0xffff)
     start = time.ticks_ms()
     tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], 0xAAAA, True, False)
     print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
-# test_exclaim()
-
-# tft = ST7735(cache_font=True)
-# tft.tft_initialize()
-# test_text(tft, 0)
-
-# tft = ST7735(cache_font=False)
-# tft.tft_initialize()
-# test_lines(tft)
-
 tft = ST7735(cache_font=True)
-test_poly(tft)
+test_tft(tft)
 
