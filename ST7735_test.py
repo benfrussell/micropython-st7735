@@ -79,7 +79,6 @@ def test_lines(tft):
         lines -= 1
     print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 
-
 def test_exclaim():
     tft = ST7735(cache_font=False)
     tft.tft_initialize()
@@ -87,6 +86,12 @@ def test_exclaim():
     tft.frame_buf.text("!", 0, 0, 1)
     char_rects = tft.find_rects_in_frame(0, 7, 0, 7)
     print(len(char_rects))
+
+def test_poly(tft):
+    tft.fill_screen(0xffff)
+    start = time.ticks_ms()
+    tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], 0xAAAA, True, False)
+    print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 # test_exclaim()
 
@@ -99,5 +104,5 @@ def test_exclaim():
 # test_lines(tft)
 
 tft = ST7735(cache_font=True)
-test_tft(tft)
+test_poly(tft)
 

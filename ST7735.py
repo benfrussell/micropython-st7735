@@ -367,6 +367,14 @@ class ST7735:
         self.frame_buf.line(x1, y1, x2, y2, 1)
         self.draw_frame_pixels(min_x, max_x, min_y, max_y, c, convex=True)
 
+    def draw_poly(self, x, y, coords, c, fill=True, convex=False):
+        coord_array = array("i", coords)
+        w = self.width - x
+        h = self.height - y
+        self.frame_buf.fill_rect(x, y, w, h, 0)
+        self.frame_buf.poly(x, y, coord_array, c, fill)
+        self.draw_frame_pixels(x, self.width, y, self.height, c, convex)
+
     def draw_ellipse(self, x, y, rx, ry, c, fill=True):
         # Fill the top-left quadrant and use that to draw the whole shape
         self.frame_buf.fill_rect(x - rx, y - ry, rx, ry, 0)
