@@ -24,11 +24,6 @@ ST7735_PTLAR        = const(0x30)
 ST7735_VSCRDEF      = const(0x33)
 ST7735_COLMOD       = const(0x3A)
 ST7735_MADCTL       = const(0x36)
-ST7735_MADCTL_MY    = const(0x80)
-ST7735_MADCTL_MX    = const(0x40)
-ST7735_MADCTL_MV    = const(0x20)
-ST7735_MADCTL_ML    = const(0x10)
-ST7735_MADCTL_RGB   = const(0x00)
 ST7735_VSCRSADD     = const(0x37)
 ST7735_FRMCTR1      = const(0xB1)
 ST7735_FRMCTR2      = const(0xB2)
@@ -88,8 +83,8 @@ init_cmds = [
     # COLMOD - Interface Pixel Format
     # 0x03 - 12-bit/pixel; 0x05 - 16-bit/pixel; 0x05 - 18-bit/pixel;
     [ST7735_COLMOD, 0x05],
-    # MADCTL - Sets row/column address order, RGB order, refresh order
-    [ST7735_MADCTL, 0xc0],
+    # # MADCTL - Sets row/column address order, RGB order, refresh order
+    # [ST7735_MADCTL, 0x00],
     # CASET - Set column range
     [ST7735_CASET, 0x00,0x00,0x00,0x4F],
     # RASET - Set row range
@@ -166,6 +161,9 @@ class ST7735:
 
         self.height = height
         self.width = width
+        self.c_offset = 24
+        self.r_offset = 0
+        self.flipped = False
 
         self.draw_buf_size = ceil((width * height) / 8)
         self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
@@ -205,17 +203,38 @@ class ST7735:
         for cmd in init_cmds:
             self.send_command(cmd[0], None if len(cmd) == 1 else cmd[1:])
 
+    def set_rotation(self, rotation, mirror_x=False, mirror_y=False):
+        r = rotation % 4
+
+        flipped = rotation % 2 == 1
+        self.c_offset = 24 if not flipped else 0
+        self.r_offset = 24 if flipped else 0
+        if flipped != self.flipped:
+            h = self.height
+            self.height = self.width
+            self.width = h
+            self.flipped = flipped
+
+        madctl_arg = (0x00, 0x64, 0xD4, 0xB0)[r]
+        if mirror_x:
+            madctl_arg = madctl_arg ^ 0x40
+        if mirror_y:
+            madctl_arg = madctl_arg ^ 0x80
+        self.send_command(ST7735_MADCTL, [madctl_arg])
+
     def set_display_area(self, x, y, w, h):
         # Set column range
+        c_offset = self.c_offset
         caset_args = b''.join((
-            int16_to_bytes(24 + x),
-            int16_to_bytes(24 + x + w - 1)
+            int16_to_bytes(c_offset + x),
+            int16_to_bytes(c_offset + x + w - 1)
         ))
         self.send_command(ST7735_CASET, caset_args)
         # Set row range
+        r_offset = self.r_offset
         raset_args = b''.join((
-            int16_to_bytes(0 + y),
-            int16_to_bytes(0 + y + h - 1)
+            int16_to_bytes(r_offset + y),
+            int16_to_bytes(r_offset + y + h - 1)
         ))
         self.send_command(ST7735_RASET, raset_args)
         # Start memory write

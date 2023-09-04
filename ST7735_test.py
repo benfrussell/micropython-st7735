@@ -24,20 +24,7 @@ def test_tft(tft):
         fills -= 1
     print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 
-    start = time.ticks_ms()
-    for r in range(11):
-        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_text(text, 5, r * 8 + 5, 0x0000)
-    print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-    tft.fill_screen(0xffff)
-
-    start = time.ticks_ms()
-    for r in range(11):
-        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
-    print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
+    test_text(tft)
     test_lines(tft)
     test_ellipses(tft)
     test_poly(tft)
@@ -50,6 +37,23 @@ def test_tft(tft):
         tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
         t += 1
     print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
+
+def test_text(tft):
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    for r in range(11):
+        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+        tft.draw_text(text, 5, r * 8 + 5, 0x0000)
+    print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    # tft.fill_screen(0xffff)
+
+    # start = time.ticks_ms()
+    # for r in range(11):
+    #     text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
+    #     tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
+    # print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_ellipses(tft):
     tft.fill_screen(0xffff)
@@ -76,10 +80,21 @@ def test_poly(tft):
     tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], 0xAAAA, True, False)
     print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
+def test_rotation(tft):
+    tft.set_rotation(0)
+    test_text(tft)
+    tft.set_rotation(1)
+    test_text(tft)
+    # tft.set_rotation(2)
+    # test_text(tft)
+    # tft.set_rotation(3)
+    # test_text(tft)
+    # tft.set_rotation(0)
+
 gc.collect()
 before = gc.mem_alloc()
 tft = ST7735()
-test_tft(tft)
+test_rotation(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 
