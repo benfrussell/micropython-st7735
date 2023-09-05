@@ -83,8 +83,6 @@ init_cmds = [
     # COLMOD - Interface Pixel Format
     # 0x03 - 12-bit/pixel; 0x05 - 16-bit/pixel; 0x05 - 18-bit/pixel;
     [ST7735_COLMOD, 0x05],
-    # # MADCTL - Sets row/column address order, RGB order, refresh order
-    # [ST7735_MADCTL, 0x00],
     # CASET - Set column range
     [ST7735_CASET, 0x00,0x00,0x00,0x4F],
     # RASET - Set row range
@@ -214,6 +212,8 @@ class ST7735:
             self.height = self.width
             self.width = h
             self.flipped = flipped
+            self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
+            self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
 
         madctl_arg = (0x00, 0x64, 0xD4, 0xB0)[r]
         if mirror_x:

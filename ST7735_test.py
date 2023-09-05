@@ -81,20 +81,35 @@ def test_poly(tft):
     print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_rotation(tft):
+    tft.tft_initialize()
     tft.set_rotation(0)
+    test_text(tft)
+    tft.set_rotation(2)
     test_text(tft)
     tft.set_rotation(1)
     test_text(tft)
-    # tft.set_rotation(2)
-    # test_text(tft)
-    # tft.set_rotation(3)
-    # test_text(tft)
-    # tft.set_rotation(0)
+    tft.set_rotation(3)
+    test_text(tft)
+    tft.set_rotation(0)
+
+def test_mirror(tft):
+    tft.tft_initialize()
+    tft.set_rotation(0)
+    test_text(tft)
+    tft.set_rotation(0, mirror_x=True)
+    test_text(tft)
+    tft.set_rotation(0, mirror_y=True)
+    test_text(tft)
+    tft.set_rotation(0, mirror_x=True, mirror_y=True)
+    test_text(tft)
+    tft.set_rotation(0)
+    test_text(tft)
+
 
 gc.collect()
 before = gc.mem_alloc()
 tft = ST7735()
-test_rotation(tft)
+test_tft(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 
