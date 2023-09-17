@@ -415,5 +415,10 @@ class ST7735:
                 self.send_data(c_data)
             else:
                 rect_height -= 2
+
+    def draw_svg(self, svg):
+        for shape in svg.shapes:
+            if shape.name is "rect":
+                pass
         
         
