@@ -13,3 +13,15 @@ Tested using the [DFRobot 0.96" 160x80 Color SPI TFT Display](https://www.dfrobo
 * Line drawing
 * Ellipse drawing
 * Polygon drawing
+* Screen rotation
+
+### In Development
+#### SVG Support
+| Shape     | Attributes                                        |
+| --------- | ------------------------------------------------- |
+| rect      | x, y, width, height, fill, stroke, stroke-width   |
+| circle    | cx, cy, r, fill, stroke                           |
+| ellipse   | cx, cy, rx, ry, fill, stroke                      |
+| line      | x1, y1, x2, y2, stroke                            |
+| polyline  | points, stroke                                    |
+| polygon   | points, fill, stroke
