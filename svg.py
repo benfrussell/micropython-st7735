@@ -1,43 +1,7 @@
-SVGColours = {
-    "aliceblue": 0xF7DF,        "antiquewhite": 0xFD5A,         "aqua": 0x07FF,                 "aquamarine": 0x7FFA,       
-    "azure": 0xF7FF,            "beige": 0xF7BB,                "bisque": 0xFF38,               "black": 0x0000,        
-    "blanchedalmond": 0xFF59,   "blue": 0x001F,                 "blueviolet": 0x895C,           "brown": 0xA145,            
-    "burlywood": 0xDDD0,        "cadetblue": 0x5CF4,            "chartreuse": 0x7FE0,           "chocolate": 0xD344,
-    "coral": 0xFF3A,            "cornflowerblue": 0x64BD,       "cornsilk": 0xFFDB,             "crimson": 0xD8A7,
-    "cyan": 0x07FF,             "darkblue": 0x0011,             "darkcyan": 0x0451,             "darkgoldenrod": 0xBC21,
-    "darkgray": 0xAD55,         "darkgreen": 0x0320,            "darkgrey": 0xAD55,             "darkkhaki": 0xBDAD,
-    "darkmagenta": 0x8811,      "darkolivegreen": 0x5345,       "darkorange": 0xFC60,           "darkorchid": 0x9999,
-    "darkred": 0x8800,          "darksalmon": 0xECAF,           "darkseagreen": 0x8DF1,         "darkslateblue": 0x49F1,
-    "darkslategray": 0x2A69,    "darkslategrey": 0x2A69,        "darkturquoise": 0x067A,        "darkviolet": 0x901A,
-    "deeppink": 0xF8B2,         "deepskyblue": 0x05FF,          "dimgray": 0x6B4D,              "dimgrey": 0x6B4D,
-    "dodgerblue": 0x1C9F,       "firebrick": 0xB104,            "floralwhite": 0xFFDE,          "forestgreen": 0x2444,
-    "fuchsia": 0xF81F,          "gainsboro": 0xDEFB,            "ghostwhite": 0xFFDF,           "gold": 0xFEA0,
-    "goldenrod": 0xDD24,        "gray": 0x8410,                 "grey": 0x8410,                 "green": 0x0400,
-    "greenyellow": 0xAFE5,      "honeydew": 0xF7FE,             "hotpink": 0xFB56,              "indianred": 0xCAEB,
-    "indigo": 0x4810,           "ivory": 0xFFFE,                "khaki": 0xF731,                "lavender": 0xE73F,
-    "lavenderblush": 0xFF9E,    "lawngreen": 0x7FE0,            "lemonchiffon": 0xFFD9,         "lightblue": 0xAEDC,
-    "lightcoral": 0xF410,       "lightcyan": 0xE7FF,            "lightgoldenrodyellow": 0xFFFC, "lightgray": 0xD69A,
-    "lightgreen": 0x9772,       "lightgrey": 0xD69A,            "lightpink": 0xFD19,            "lightsalmon": 0xFD0F,
-    "lightseagreen": 0x2595,    "lightskyblue": 0x867F,         "lightslategray": 0x7453,       "lightslategrey": 0x7453,
-    "lightsteelblue": 0xB63B,   "lightyellow": 0xFFFC,          "lime": 0x07E0,                 "limegreen": 0x3666,
-    "linen": 0xF77C,            "magenta": 0xF81F,              "maroon": 0x8000,               "mediumaquamarine": 0x6675,
-    "mediumblue": 0x0019,       "mediumorchid": 0xBABA,         "mediumpurple": 0x939B,         "mediumseagreen": 0x3D8E,
-    "mediumslateblue": 0x7B5D,  "mediumspringgreen": 0x07D3,    "mediumturquoise": 0x4E99,      "mediumvioletred": 0xC0B0,
-    "midnightblue": 0x18CE,     "mintcream": 0xF7FF,            "mistyrose": 0xFF3E,            "moccasin": 0xFF36,
-    "navajowhite": 0xFFDE,      "navy": 0x0010,                 "oldlace": 0xFFE3,              "olive": 0x8400,
-    "olivedrab": 0x6C64,        "orange": 0xFD20,               "orangered": 0xFA20,            "orchid": 0xDB9A,
-    "palegoldenrod": 0xEF55,    "palegreen": 0x9FD3,            "paleturquoise": 0xAF7D,        "palevioletred": 0xDB92,
-    "papayawhip": 0xFF7A,       "peachpuff": 0xFED7,            "peru": 0xCC27,                 "pink": 0xFE19,
-    "plum": 0xDD1B,             "powderblue": 0xB71C,           "purple": 0x8010,               "rebeccapurple": 0x6633,
-    "red": 0xF800,              "rosybrown": 0xBC71,            "royalblue": 0x435C,            "saddlebrown": 0x8A22,
-    "salmon": 0xFC0E,           "sandybrown": 0xF52C,           "seagreen": 0x2C4A,             "seashell": 0xFFBD,
-    "sienna": 0xA285,           "silver": 0xC618,               "skyblue": 0x867D,              "slateblue": 0x6AD9,
-    "slategray": 0x7412,        "slategrey": 0x7412,            "snow": 0xFFDF,                 "springgreen": 0x07EF,
-    "steelblue": 0x4416,        "tan": 0xD5B1,                  "teal": 0x0410,                 "thistle": 0xDDFB,
-    "tomato": 0xFB08,           "turquoise": 0x471A,            "violet": 0xEC1D,               "wheat": 0xF6F6,
-    "white": 0xFFFF,            "whitesmoke": 0xF7BE,           "yellow": 0xFFE0,               "yellowgreen": 0x9E66,
-}
-
+try:
+    import colours
+except ImportError:
+    colours = None 
 
 class Element:
     def __init__(self, name, attributes):
@@ -50,22 +14,14 @@ class SVG:
         self.shapes = shapes
 
     @staticmethod
-    def colour_to_hex(colour_str: str):
-        def rgb_to_hex(rgb):
-            r = int(rgb[0] * 31)
-            g = int(rgb[1] * 63)
-            b = int(rgb[2] * 31)
-            return (r << 11) | (g << 5) | b
-
-        def hsl_to_hex(hsl):
-            h, s, l = hsl
+    def colour_to_rgb(colour_str: str):
+        def hsl_to_rgb(h, s, l):
             c = (1 - abs(2 * l - 1)) * s
             h_ = h / 60
             x = c * (1 - abs(h_ % 2 - 1))
-
             m = l - c / 2
-            r, g, b = 0, 0, 0
 
+            r, g, b = 0, 0, 0
             if 0 <= h_ < 1:
                 r, g, b = c, x, 0
             elif 1 <= h_ < 2:
@@ -76,37 +32,61 @@ class SVG:
                 r, g, b = 0, x, c
             elif 4 <= h_ < 5:
                 r, g, b = x, 0, c
-            elif 5 <= h_ < 6:
+            elif 5 <= h_ <= 6:
                 r, g, b = c, 0, x
 
             r = int((r + m) * 255)
             g = int((g + m) * 255)
             b = int((b + m) * 255)
-
-            r = int(r * 31 / 255)
-            g = int(g * 63 / 255)
-            b = int(b * 31 / 255)
-
-            return (r << 11) | (g << 5) | b
+            
+            return r, g, b
 
         colour_str = colour_str.strip().lower()
 
         if colour_str.startswith("rgb"):
             colour_str = colour_str[colour_str.index("(") + 1:].strip('()')
-            rgb_values = [float(val) / 255 if "%" not in val else float(val.strip("%")) / 100 for val in colour_str.split(',')[:3]]
-            if len(rgb_values) == 3:
-                return rgb_to_hex(rgb_values)
+            vals = [v.strip() for v in colour_str.split(',')[:3]]
+            return tuple(int(val) if "%" not in val else float(val.strip("%")) * 2.55 for val in vals)
 
         elif colour_str.startswith("hsl"):
             colour_str = colour_str[colour_str.index("(") + 1:].strip('()')
-            hsl_values = [float(val) if "%" not in val else float(val.strip("%")) / 100 for val in colour_str.split(',')[:3]]
-            if len(hsl_values) == 3:
-                return hsl_to_hex(hsl_values)
+            vals = [v.strip() for v in colour_str.split(',')[:3]]
+            return hsl_to_rgb(float(vals[0]), float(vals[1].strip("%")) / 100, float(vals[2].strip("%")) / 100)
             
-        elif colour_str in SVGColours.keys():
-            return SVGColours[colour_str]
+        elif hasattr(colours, colour_str.upper()):
+            return getattr(colours, colour_str.upper())
 
         return None
+    
+    @staticmethod
+    def length_to_pixels(length_string: str):
+        # Define a dictionary to map SVG units to their pixel values
+        units_to_pixels = {
+            "px": 1,
+            "mm": 3.77953,
+            "cm": 37.79528,
+            "q": 0.94488,
+            "in": 96,
+            "pc": 16,
+            "pt": 1.33333
+        }
+
+        # Split the length string into the numeric value and the unit
+        length_string = length_string.strip().lower()
+        value = ''.join([c if c.isdigit() or c is '.' else '' for c in length_string])
+        unit = length_string.replace(value, '')
+
+        try:
+            value = float(value)
+        except ValueError:
+            raise ValueError(f"Invalid numeric value in SVG length: '{value}'")
+        
+        if unit is '':
+            return int(value)
+        elif unit not in units_to_pixels.keys():
+            raise ValueError(f"Unsupported SVG unit: '{unit}'")
+
+        return int(value * units_to_pixels[unit])
 
     @staticmethod
     def read_svg(stream):
@@ -116,11 +96,13 @@ class SVG:
         for e in elements:
             if e.name not in SVG.ValidElements:
                 continue
-            attrs = e.attributes.keys()
-            if "fill" in attrs:
-                e.attributes["fill"] = SVG.colour_to_hex(e.attributes["fill"])
-            if "stroke" in attrs:
-                e.attributes["stroke"] = SVG.colour_to_hex(e.attributes["stroke"])
+
+            for attr,val in e.attributes.items():
+                if attr in ("fill", "stroke"):
+                    e.attributes[attr] = SVG.colour_to_rgb(val)
+                elif 'x' in attr or 'y' in attr or attr in ("width", "height", "r", "stroke-width"):
+                    e.attributes[attr] = SVG.length_to_pixels(val)
+
             shapes.append(e)
         return SVG(shapes)
 
