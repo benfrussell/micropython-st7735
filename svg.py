@@ -10,6 +10,17 @@ class Element:
 
 class SVG:
     ValidElements = ("rect", "circle", "ellipse", "line", "polyline", "polygon")
+    # Define a dictionary to map SVG units to their pixel values
+    UnitsToPixels = {
+        "px": 1,
+        "mm": 3.77953,
+        "cm": 37.79528,
+        "q": 0.94488,
+        "in": 96,
+        "pc": 16,
+        "pt": 1.33333
+    }
+    
     def __init__(self, shapes=[]):
         self.shapes = shapes
 
@@ -60,17 +71,6 @@ class SVG:
     
     @staticmethod
     def length_to_pixels(length_string: str):
-        # Define a dictionary to map SVG units to their pixel values
-        units_to_pixels = {
-            "px": 1,
-            "mm": 3.77953,
-            "cm": 37.79528,
-            "q": 0.94488,
-            "in": 96,
-            "pc": 16,
-            "pt": 1.33333
-        }
-
         # Split the length string into the numeric value and the unit
         length_string = length_string.strip().lower()
         value = ''.join([c if c.isdigit() or c is '.' else '' for c in length_string])
@@ -83,10 +83,10 @@ class SVG:
         
         if unit is '':
             return int(value)
-        elif unit not in units_to_pixels.keys():
+        elif unit not in SVG.UnitsToPixels.keys():
             raise ValueError(f"Unsupported SVG unit: '{unit}'")
 
-        return int(value * units_to_pixels[unit])
+        return int(value * SVG.UnitsToPixels[unit])
 
     @staticmethod
     def read_svg(stream):

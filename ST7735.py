@@ -102,6 +102,14 @@ init_cmds = [
 def int16_to_bytes(i: int):
     return bytes([(i >> 8) & 0xFF, i & 0xFF])
 
+def rgb_to_565(rgb):
+    r, g, b = rgb
+    # Convert RGB values to 5-6-5 format
+    r5 = (r >> 3) & 0x1F  # 5 bits for red
+    g6 = (g >> 2) & 0x3F  # 6 bits for green
+    b5 = (b >> 3) & 0x1F  # 5 bits for blue
+    return (r5 << 11) | (g6 << 5) | b5
+
 bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
 bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
 
@@ -310,17 +318,17 @@ class ST7735:
                     break
 
     def fill_screen(self, c):
-        self.draw_rectangle(0, 0, self.width, self.height, c)
+        self.draw_rect(0, 0, self.width, self.height, c)
 
-    def draw_rectangle(self, x, y, width, height, c, fill=True, thickness=1):
+    def draw_rect(self, x, y, width, height, c, fill=True, thickness=1):
         if fill:
             self.set_display_area(x, y, width, height)
             self.send_data((width * height) * int16_to_bytes(c))
         else:
-            self.draw_rectangle(x, y, width, thickness, c)
-            self.draw_rectangle(x, y + height - thickness, width, thickness, c)
-            self.draw_rectangle(x, y + thickness, thickness, height - (thickness * 2), c)
-            self.draw_rectangle(x + width - thickness, y + thickness, thickness, height - (thickness * 2), c)
+            self.draw_rect(x, y, width, thickness, c)
+            self.draw_rect(x, y + height - thickness, width, thickness, c)
+            self.draw_rect(x, y + thickness, thickness, height - (thickness * 2), c)
+            self.draw_rect(x + width - thickness, y + thickness, thickness, height - (thickness * 2), c)
 
     # Draw text pixel by pixel
     def draw_text(self, text, x, y, c):
@@ -359,10 +367,10 @@ class ST7735:
                 return
 
     def draw_hline(self, x, y, w, c):
-        self.draw_rectangle(x, y, w, 1, c)
+        self.draw_rect(x, y, w, 1, c)
 
     def draw_vline(self, x, y, h, c):
-        self.draw_rectangle(x, y, 1, h, c)
+        self.draw_rect(x, y, 1, h, c)
 
     def draw_line(self, x1, y1, x2, y2, c):
         min_x = min(x1, x2)
@@ -418,7 +426,49 @@ class ST7735:
 
     def draw_svg(self, svg):
         for shape in svg.shapes:
-            if shape.name is "rect":
-                pass
+            name = shape.name
+            if name is "rect":
+                if svg.attributes['fill'] is not None:
+                    self.draw_rect(
+                        svg.attributes['x'],
+                        svg.attributes['y'],
+                        svg.attributes['width'],
+                        svg.attributes['height'],
+                        rgb_to_565(svg.attributes['fill']))
+                if svg.attributes['stroke'] is not None:
+                    self.draw_rect(
+                        svg.attributes['x'],
+                        svg.attributes['y'],
+                        svg.attributes['width'],
+                        svg.attributes['height'],
+                        rgb_to_565(svg.attributes['fill']),
+                        fill=False,
+                        thickness=svg.attributes['stroke-width'])
+            elif name is "circle" or name is "ellipse":
+                rx = svg.attributes['rx'] if name is "ellipse" else svg.attributes['r']
+                ry = svg.attributes['ry'] if name is "ellipse" else svg.attributes['r']
+                if svg.attributes['fill'] is not None:
+                    self.draw_ellipse(
+                        svg.attributes['x'], 
+                        svg.attributes['y'], 
+                        rx, 
+                        ry, 
+                        rgb_to_565(svg.attributes['fill']))
+                if svg.attributes['stroke'] is not None:
+                    self.draw_ellipse(
+                        svg.attributes['x'], 
+                        svg.attributes['y'], 
+                        rx, 
+                        ry, 
+                        rgb_to_565(svg.attributes['stroke']), 
+                        False)
+            elif name is "line":
+                if svg.attributes['stroke'] is not None:
+                    self.draw_line(
+                        svg.attributes['x1'], 
+                        svg.attributes['y1'], 
+                        svg.attributes['x2'], 
+                        svg.attributes['y2'], 
+                        rgb_to_565(svg.attributes['stroke']))
         
         
