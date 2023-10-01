@@ -428,47 +428,47 @@ class ST7735:
         for shape in svg.shapes:
             name = shape.name
             if name is "rect":
-                if svg.attributes['fill'] is not None:
+                if shape.attributes['fill'] is not None:
                     self.draw_rect(
-                        svg.attributes['x'],
-                        svg.attributes['y'],
-                        svg.attributes['width'],
-                        svg.attributes['height'],
-                        rgb_to_565(svg.attributes['fill']))
-                if svg.attributes['stroke'] is not None:
+                        shape.attributes['x'],
+                        shape.attributes['y'],
+                        shape.attributes['width'],
+                        shape.attributes['height'],
+                        rgb_to_565(shape.attributes['fill']))
+                if shape.attributes['stroke'] is not None:
                     self.draw_rect(
-                        svg.attributes['x'],
-                        svg.attributes['y'],
-                        svg.attributes['width'],
-                        svg.attributes['height'],
-                        rgb_to_565(svg.attributes['fill']),
+                        shape.attributes['x'],
+                        shape.attributes['y'],
+                        shape.attributes['width'],
+                        shape.attributes['height'],
+                        rgb_to_565(shape.attributes['stroke']),
                         fill=False,
-                        thickness=svg.attributes['stroke-width'])
+                        thickness=shape.attributes['stroke-width'])
             elif name is "circle" or name is "ellipse":
-                rx = svg.attributes['rx'] if name is "ellipse" else svg.attributes['r']
-                ry = svg.attributes['ry'] if name is "ellipse" else svg.attributes['r']
-                if svg.attributes['fill'] is not None:
+                rx = shape.attributes['rx'] if name is "ellipse" else shape.attributes['r']
+                ry = shape.attributes['ry'] if name is "ellipse" else shape.attributes['r']
+                if shape.attributes['fill'] is not None:
                     self.draw_ellipse(
-                        svg.attributes['x'], 
-                        svg.attributes['y'], 
+                        shape.attributes['cx'], 
+                        shape.attributes['cy'], 
                         rx, 
                         ry, 
-                        rgb_to_565(svg.attributes['fill']))
-                if svg.attributes['stroke'] is not None:
+                        rgb_to_565(shape.attributes['fill']))
+                if shape.attributes['stroke'] is not None:
                     self.draw_ellipse(
-                        svg.attributes['x'], 
-                        svg.attributes['y'], 
+                        shape.attributes['cx'], 
+                        shape.attributes['cy'], 
                         rx, 
                         ry, 
-                        rgb_to_565(svg.attributes['stroke']), 
+                        rgb_to_565(shape.attributes['stroke']), 
                         False)
             elif name is "line":
-                if svg.attributes['stroke'] is not None:
+                if shape.attributes['stroke'] is not None:
                     self.draw_line(
-                        svg.attributes['x1'], 
-                        svg.attributes['y1'], 
-                        svg.attributes['x2'], 
-                        svg.attributes['y2'], 
-                        rgb_to_565(svg.attributes['stroke']))
+                        shape.attributes['x1'], 
+                        shape.attributes['y1'], 
+                        shape.attributes['x2'], 
+                        shape.attributes['y2'], 
+                        rgb_to_565(shape.attributes['stroke']))
         
         

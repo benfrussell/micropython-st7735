@@ -51,10 +51,24 @@ class SVG:
             b = int((b + m) * 255)
             
             return r, g, b
+        
+        def hex_to_rgb(hex_colour):
+            # Remove the '#' symbol if it exists
+            hex_colour = hex_colour.lstrip('#')
+            
+            # Convert the hex color to an RGB tuple
+            r = int(hex_colour[0:2], 16)
+            g = int(hex_colour[2:4], 16)
+            b = int(hex_colour[4:6], 16)
+            
+            return (r, g, b)
 
         colour_str = colour_str.strip().lower()
 
-        if colour_str.startswith("rgb"):
+        if colour_str.startswith("#"):
+            return hex_to_rgb(colour_str)
+
+        elif colour_str.startswith("rgb"):
             colour_str = colour_str[colour_str.index("(") + 1:].strip('()')
             vals = [v.strip() for v in colour_str.split(',')[:3]]
             return tuple(int(val) if "%" not in val else float(val.strip("%")) * 2.55 for val in vals)

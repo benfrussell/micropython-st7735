@@ -2,6 +2,7 @@ import gc
 import time
 import random
 from ST7735 import ST7735
+from svg import SVG
 
 def random_16bit_color():
     # Generate random values for red, green, and blue components
@@ -34,7 +35,7 @@ def test_tft(tft):
     start = time.ticks_ms()
     t = 1
     while t <= 40:
-        tft.draw_rectangle(0, 0, 80, 160, 0x0000, False, t)
+        tft.draw_rect(0, 0, 80, 160, 0x0000, False, t)
         t += 1
     print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
 
@@ -105,11 +106,18 @@ def test_mirror(tft):
     tft.set_rotation(0)
     test_text(tft)
 
+def test_svg(tft):
+    tft.tft_initialize()
+    with open("test.svg") as f:
+        svg_test = SVG.read_svg(f)
+    tft.set_rotation(1)
+    tft.fill_screen(0xffff)
+    tft.draw_svg(svg_test)
 
 gc.collect()
 before = gc.mem_alloc()
 tft = ST7735()
-test_tft(tft)
+test_svg(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 
