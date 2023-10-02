@@ -2,7 +2,7 @@
 
  <g>
   <title>Layer 1</title>
-  <rect stroke-width="5" id="svg_1" height="42.49963" width="35.99968" y="18.75019" x="9.50062" stroke="#0000ff" fill="#ff0000"/>
+  <rect stroke-width="10" id="svg_1" height="42.49963" width="35.99968" y="18.75019" x="9.50062" stroke="#0000ff" fill="#ff0000"/>
   <ellipse ry="18.74983" rx="14.99987" id="svg_2" cy="39.50001" cx="78.50001" stroke="#191919" fill="#7fff00"/>
   <line id="svg_3" y2="56.74985" x2="108.49974" y1="25.25013" x1="108.49974" stroke="#191919" fill="none"/>
   <line id="svg_4" y2="56.24986" x2="125.49959" y1="25.75013" x1="125.49959" stroke="#191919" fill="none"/>

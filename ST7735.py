@@ -83,6 +83,7 @@ init_cmds = [
     # COLMOD - Interface Pixel Format
     # 0x03 - 12-bit/pixel; 0x05 - 16-bit/pixel; 0x05 - 18-bit/pixel;
     [ST7735_COLMOD, 0x05],
+    [ST7735_MADCTL, 0x08],
     # CASET - Set column range
     [ST7735_CASET, 0x00,0x00,0x00,0x4F],
     # RASET - Set row range
@@ -223,7 +224,7 @@ class ST7735:
             self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
             self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
 
-        madctl_arg = (0x00, 0x64, 0xD4, 0xB0)[r]
+        madctl_arg = (0x08, 0x6C, 0xDC, 0xB8)[r]
         if mirror_x:
             madctl_arg = madctl_arg ^ 0x40
         if mirror_y:
@@ -325,10 +326,11 @@ class ST7735:
             self.set_display_area(x, y, width, height)
             self.send_data((width * height) * int16_to_bytes(c))
         else:
-            self.draw_rect(x, y, width, thickness, c)
-            self.draw_rect(x, y + height - thickness, width, thickness, c)
-            self.draw_rect(x, y + thickness, thickness, height - (thickness * 2), c)
-            self.draw_rect(x + width - thickness, y + thickness, thickness, height - (thickness * 2), c)
+            half_thick = int(thickness / 2)
+            self.draw_rect(x - half_thick, y - half_thick, width + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + height - half_thick, width + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + half_thick, thickness, height - thickness, c)
+            self.draw_rect(x + width - half_thick, y + half_thick, thickness, height - thickness, c)
 
     # Draw text pixel by pixel
     def draw_text(self, text, x, y, c):
@@ -428,14 +430,14 @@ class ST7735:
         for shape in svg.shapes:
             name = shape.name
             if name is "rect":
-                if shape.attributes['fill'] is not None:
+                if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
                     self.draw_rect(
                         shape.attributes['x'],
                         shape.attributes['y'],
                         shape.attributes['width'],
                         shape.attributes['height'],
                         rgb_to_565(shape.attributes['fill']))
-                if shape.attributes['stroke'] is not None:
+                if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
                     self.draw_rect(
                         shape.attributes['x'],
                         shape.attributes['y'],
@@ -447,14 +449,14 @@ class ST7735:
             elif name is "circle" or name is "ellipse":
                 rx = shape.attributes['rx'] if name is "ellipse" else shape.attributes['r']
                 ry = shape.attributes['ry'] if name is "ellipse" else shape.attributes['r']
-                if shape.attributes['fill'] is not None:
+                if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
                     self.draw_ellipse(
                         shape.attributes['cx'], 
                         shape.attributes['cy'], 
                         rx, 
                         ry, 
                         rgb_to_565(shape.attributes['fill']))
-                if shape.attributes['stroke'] is not None:
+                if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
                     self.draw_ellipse(
                         shape.attributes['cx'], 
                         shape.attributes['cy'], 
@@ -463,7 +465,7 @@ class ST7735:
                         rgb_to_565(shape.attributes['stroke']), 
                         False)
             elif name is "line":
-                if shape.attributes['stroke'] is not None:
+                if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
                     self.draw_line(
                         shape.attributes['x1'], 
                         shape.attributes['y1'], 
