@@ -193,13 +193,10 @@ class ST7735:
         self.dc_pin.high()
 
         if args is not None and len(args) > 0:
-            self.send_data(bytes(args))
-
-    def send_data(self, data):
-        self.cs_pin.low()
-        self.spi.write(data)
-        self.cs_pin.high()
-        self.dc_pin.high()
+            self.cs_pin.low()
+            self.spi.write(bytes(args))
+            self.cs_pin.high()
+            self.dc_pin.high()
 
     def tft_initialize(self):
         self.rt_pin.low()
@@ -231,23 +228,35 @@ class ST7735:
             madctl_arg = madctl_arg ^ 0x80
         self.send_command(ST7735_MADCTL, [madctl_arg])
 
-    def set_display_area(self, x, y, w, h):
-        # Set column range
-        c_offset = self.c_offset
-        caset_args = b''.join((
-            int16_to_bytes(c_offset + x),
-            int16_to_bytes(c_offset + x + w - 1)
-        ))
-        self.send_command(ST7735_CASET, caset_args)
-        # Set row range
-        r_offset = self.r_offset
-        raset_args = b''.join((
-            int16_to_bytes(r_offset + y),
-            int16_to_bytes(r_offset + y + h - 1)
-        ))
-        self.send_command(ST7735_RASET, raset_args)
-        # Start memory write
-        self.send_command(ST7735_RAMWR)
+    def draw_rect(self, x, y, w, h, c, fill=True, thickness=1):
+        if fill:
+            # Set column range
+            c_offset = self.c_offset
+            caset_args = b''.join((
+                int16_to_bytes(c_offset + x),
+                int16_to_bytes(c_offset + x + w - 1)
+            ))
+            self.send_command(ST7735_CASET, caset_args)
+            # Set row range
+            r_offset = self.r_offset
+            raset_args = b''.join((
+                int16_to_bytes(r_offset + y),
+                int16_to_bytes(r_offset + y + h - 1)
+            ))
+            self.send_command(ST7735_RASET, raset_args)
+            # Start memory write
+            self.send_command(ST7735_RAMWR)
+
+            self.cs_pin.low()
+            self.spi.write(int16_to_bytes(c) * (w * h))
+            self.cs_pin.high()
+            self.dc_pin.high()
+        else:
+            half_thick = int(thickness / 2)
+            self.draw_rect(x - half_thick, y - half_thick, w + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + h - half_thick, w + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + half_thick, thickness, h - thickness, c)
+            self.draw_rect(x + w - half_thick, y + half_thick, thickness, h - thickness, c)
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
@@ -305,32 +314,18 @@ class ST7735:
     def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
         buf = memoryview(self.draw_buf)
         buf_width = self.width
-        c_bytes = int16_to_bytes(c)
         # Gain a few ms by making local function references
-        set_display_area = self.set_display_area
-        send_data = self.send_data
+        draw_rect = self.draw_rect
 
         for y in range(start_y, end_y + 1):
             for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
-                set_display_area(line_start_x, y, draw_width, 1)
-                send_data(c_bytes * draw_width)
+                draw_rect(line_start_x, y, draw_width, 1, c)
                 if convex:
                     break
 
     def fill_screen(self, c):
         self.draw_rect(0, 0, self.width, self.height, c)
-
-    def draw_rect(self, x, y, width, height, c, fill=True, thickness=1):
-        if fill:
-            self.set_display_area(x, y, width, height)
-            self.send_data((width * height) * int16_to_bytes(c))
-        else:
-            half_thick = int(thickness / 2)
-            self.draw_rect(x - half_thick, y - half_thick, width + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + height - half_thick, width + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + half_thick, thickness, height - thickness, c)
-            self.draw_rect(x + width - half_thick, y + half_thick, thickness, height - thickness, c)
 
     # Draw text pixel by pixel
     def draw_text(self, text, x, y, c):
@@ -345,7 +340,6 @@ class ST7735:
     def draw_fast_text(self, text: str, x, y, c):
         x_pos = x
         cache_len = len(self.font_cache_lookup)
-        c_bytes = int16_to_bytes(c)
 
         for symbol in text:
             symbol_ord = ord(symbol)
@@ -356,12 +350,12 @@ class ST7735:
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
                     for rect in range(num_rects):
-                        self.set_display_area(
+                        self.draw_rect(
                             self.font_cache[font_cache_pos + 1] + x_pos, 
                             self.font_cache[font_cache_pos + 2] + y, 
                             self.font_cache[font_cache_pos + 3], 
-                            self.font_cache[font_cache_pos + 4])
-                        self.send_data(c_bytes * (self.font_cache[font_cache_pos + 3] * self.font_cache[font_cache_pos + 4]))
+                            self.font_cache[font_cache_pos + 4],
+                            c)
                         # Advance 4 bytes to the next rectangle
                         font_cache_pos += 4
             x_pos += 8
@@ -399,7 +393,6 @@ class ST7735:
 
         buf = memoryview(self.draw_buf)
         buf_width = self.width
-        c_bytes = int16_to_bytes(c)
         # For each row and column
         rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
@@ -408,21 +401,16 @@ class ST7735:
             except StopIteration:
                 continue
             rect_width = rect_end_x - rect_start_x + 1
-            c_data = c_bytes * (rect_width * rect_height)
             # Draw the left rectangle
-            self.set_display_area(rect_start_x, buf_y, rect_width, rect_height)
-            self.send_data(c_data)
+            self.draw_rect(rect_start_x, buf_y, rect_width, rect_height, c)
             # Draw the right rectangle
-            self.set_display_area(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height)
-            self.send_data(c_data)
+            self.draw_rect(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height, c)
 
             if fill is False:
                 # Draw the left bottom rectangle
-                self.set_display_area(rect_start_x, y + (y - buf_y), rect_width, rect_height)
-                self.send_data(c_data)
+                self.draw_rect(rect_start_x, y + (y - buf_y), rect_width, rect_height, c)
                 # Draw the right bottom rectangle
-                self.set_display_area(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height)
-                self.send_data(c_data)
+                self.draw_rect(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height, c)
             else:
                 rect_height -= 2
 

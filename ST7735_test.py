@@ -117,7 +117,8 @@ def test_svg(tft):
 gc.collect()
 before = gc.mem_alloc()
 tft = ST7735()
-test_svg(tft)
+#test_svg(tft)
+test_tft(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 
