@@ -114,47 +114,11 @@ def rgb_to_565(rgb):
 bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
 bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
 
-def yield_px_in_row(framebuf, buf_width, y, start_x=0, end_x=80):
-    bottom_pos = y * buf_width + start_x
-    top_pos = bottom_pos + end_x
-    start_byte = floor(bottom_pos / 8)
-    pos = start_byte * 8
-    for b in framebuf[start_byte:ceil(top_pos / 8) + 1]:
-        while b > 0:
-            bitlen = 7 - int(log(b,2))
-            b = b & bitmask_inv[bitlen]
-            new_pos = pos + bitlen
-            if new_pos < bottom_pos:
-                continue
-            elif new_pos > top_pos:
-                return
-            # Yield the x
-            yield new_pos % buf_width
-        pos += 8
-
-def yield_lines_in_row(framebuf, buf_width, y, start_x=0, end_x=80):
-    next_x = start_x
-    line_width = 0
-    for px in yield_px_in_row(framebuf, buf_width, y, start_x, end_x):
-        if px == next_x:
-            line_width += 1
-            next_x += 1
-            continue
-        elif line_width > 0:
-            yield next_x - line_width, next_x - 1
-        next_x = px + 1
-        line_width = 1
-    if line_width > 0:
-        yield next_x - line_width, next_x - 1
-
-def set_mono_framebuf_pixel(framebuf, buf_width, x, y, p):
-    pos = (y * buf_width) + x
-    mod = pos % 8
-    pos = int((pos - mod) / 8)
-    if p == 0:
-        framebuf[pos] = framebuf[pos] & bitmask_inv[mod]
-    else:
-        framebuf[pos] = framebuf[pos] | bitmask[mod]
+# class MonoFrameBuffer(framebuf.FrameBuffer):
+#     def __init__(self, width: int, height: int):
+#         self.draw_buf_size = ceil((width * height) / 8)
+#         self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
+#         super().__init__(memoryview(self.draw_buf), width, height, framebuf.MONO_HLSB)
 
 class ST7735:
     def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
@@ -184,6 +148,56 @@ class ST7735:
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
+
+    def yield_px_in_row(self, y, start_x=0, end_x=80):
+        buf = memoryview(self.draw_buf)
+        buf_width = self.width
+        
+        bottom_pos = y * buf_width + start_x
+        top_pos = bottom_pos + end_x
+        start_byte = floor(bottom_pos / 8)
+        pos = start_byte * 8
+
+        for b in buf[start_byte:ceil(top_pos / 8) + 1]:
+            while b > 0:
+                bitlen = 7 - int(log(b,2))
+                b = b & bitmask_inv[bitlen]
+                new_pos = pos + bitlen
+                if new_pos < bottom_pos:
+                    continue
+                elif new_pos > top_pos:
+                    return
+                # Yield the x
+                yield new_pos % buf_width
+            pos += 8
+
+    def yield_lines_in_row(self, y, start_x=0, end_x=80):
+        next_x = start_x
+        line_width = 0
+
+        for px in self.yield_px_in_row(y, start_x, end_x):
+            if px == next_x:
+                line_width += 1
+                next_x += 1
+                continue
+            elif line_width > 0:
+                yield next_x - line_width, next_x - 1
+            next_x = px + 1
+            line_width = 1
+        if line_width > 0:
+            yield next_x - line_width, next_x - 1
+
+    def set_mono_framebuf_pixel(self, x, y, p):
+        buf = memoryview(self.draw_buf)
+        buf_width = self.width
+
+        pos = (y * buf_width) + x
+        mod = pos % 8
+        pos = int((pos - mod) / 8)
+        if p == 0:
+            buf[pos] = buf[pos] & bitmask_inv[mod]
+        else:
+            buf[pos] = buf[pos] | bitmask[mod]
 
     def send_command(self, cmd, args = None):
         self.cs_pin.low()
@@ -262,29 +276,27 @@ class ST7735:
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
     def find_rects_in_frame(self, start_x, end_x, start_y, end_y):
         # Helper function for checking if a line of pixels can extend down one level
-        def can_expand_down(start_x, end_x, y, buf, buf_width):
+        def can_expand_down(start_x, end_x, y):
             #for x in range(start_x, end_x):
-            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
+            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
                 return line_start_x == start_x and line_end_x == end_x
 
-        def get_expanded_rect(start_x, end_x, y, buf, buf_width):
+        def get_expanded_rect(start_x, end_x, y):
             h = 1
             next_row = y + 1
-            while can_expand_down(start_x, end_x, next_row, buf, buf_width):
+            while can_expand_down(start_x, end_x, next_row):
                 # If it did expand down, unset the pixels expanded
                 for exp_x in range(start_x, end_x + 1):
-                    set_mono_framebuf_pixel(buf, buf_width, exp_x, next_row, 0)
+                    self.set_mono_framebuf_pixel(exp_x, next_row, 0)
                 next_row += 1
                 h += 1
             return (start_x, y, end_x - start_x + 1, h)
     
-        buf = memoryview(self.draw_buf)
-        buf_width = self.width
         rects = []
         # For each row and column
         for y in range(start_y,end_y+1):
-            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
-                rects += get_expanded_rect(line_start_x, line_end_x, y, buf, buf_width)
+            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
+                rects += get_expanded_rect(line_start_x, line_end_x, y)
 
         return rects
         
@@ -312,13 +324,11 @@ class ST7735:
 
     # Draw the pixels in the region defined in the frame buffer
     def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
-        buf = memoryview(self.draw_buf)
-        buf_width = self.width
         # Gain a few ms by making local function references
         draw_rect = self.draw_rect
 
         for y in range(start_y, end_y + 1):
-            for line_start_x,line_end_x in yield_lines_in_row(buf, buf_width, y, start_x, end_x):
+            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
                 draw_rect(line_start_x, y, draw_width, 1, c)
                 if convex:
@@ -349,7 +359,7 @@ class ST7735:
                 if font_cache_pos > -1:
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
-                    for rect in range(num_rects):
+                    for _ in range(num_rects):
                         self.draw_rect(
                             self.font_cache[font_cache_pos + 1] + x_pos, 
                             self.font_cache[font_cache_pos + 2] + y, 
@@ -391,13 +401,11 @@ class ST7735:
         self.frame_buf.fill_rect(x - rx, y - ry, rx, ry, 0)
         self.frame_buf.ellipse(x, y, rx, ry, 1, False, 2)
 
-        buf = memoryview(self.draw_buf)
-        buf_width = self.width
         # For each row and column
         rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
             try:
-                rect_start_x,rect_end_x = next(yield_lines_in_row(buf, buf_width, buf_y, x-rx, x))
+                rect_start_x,rect_end_x = next(self.yield_lines_in_row(buf_y, x-rx, x))
             except StopIteration:
                 continue
             rect_width = rect_end_x - rect_start_x + 1
