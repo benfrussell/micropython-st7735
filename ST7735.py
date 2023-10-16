@@ -100,6 +100,9 @@ init_cmds = [
     [ST7735_DISPON]
 ]
 
+bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
+bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
+
 def int16_to_bytes(i: int):
     return bytes([(i >> 8) & 0xFF, i & 0xFF])
 
@@ -111,48 +114,18 @@ def rgb_to_565(rgb):
     b5 = (b >> 3) & 0x1F  # 5 bits for blue
     return (r5 << 11) | (g6 << 5) | b5
 
-bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
-bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
-
-# class MonoFrameBuffer(framebuf.FrameBuffer):
-#     def __init__(self, width: int, height: int):
-#         self.draw_buf_size = ceil((width * height) / 8)
-#         self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
-#         super().__init__(memoryview(self.draw_buf), width, height, framebuf.MONO_HLSB)
-
-class ST7735:
-    def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
-        self.dc_pin = Pin(dc, Pin.OUT, value=1)
-        self.cs_pin = Pin(cs, Pin.OUT, value=1)
-        self.rt_pin = Pin(rt, Pin.OUT, value=1)
-
-        self.sck_pin = Pin(sck, Pin.ALT_SPI)
-        self.mosi_pin = Pin(mosi, Pin.ALT_SPI)
-        self.miso_pin = Pin(miso, Pin.ALT_SPI)
-
-        self.height = height
+# A mono-only frame buffer built for fast pixel yields
+class MonoFrameBuffer(framebuf.FrameBuffer):
+    def __init__(self, width: int, height: int):
         self.width = width
-        self.c_offset = 24
-        self.r_offset = 0
-        self.flipped = False
-
         self.draw_buf_size = ceil((width * height) / 8)
         self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
-        self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), width, height, framebuf.MONO_HLSB)
+        self.draw_buf_ref = memoryview(self.draw_buf)
+        super().__init__(self.draw_buf_ref, width, height, framebuf.MONO_HLSB)
 
-        # Theorhetical max is half of the system frequency (125MHz / 2)
-        self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
-
-        self.font_cache : array
-        self.font_cache_lookup : array
-        if cache_font:
-            self.font_cache_lookup = array("h", 127 * [0])
-            self.build_font_cache()
-
-    def yield_px_in_row(self, y, start_x=0, end_x=80):
-        buf = memoryview(self.draw_buf)
+    def yield_px_in_row(self, y, start_x, end_x):
+        buf = self.draw_buf_ref
         buf_width = self.width
-        
         bottom_pos = y * buf_width + start_x
         top_pos = bottom_pos + end_x
         start_byte = floor(bottom_pos / 8)
@@ -171,10 +144,10 @@ class ST7735:
                 yield new_pos % buf_width
             pos += 8
 
-    def yield_lines_in_row(self, y, start_x=0, end_x=80):
+    def yield_lines_in_row(self, y, start_x=0, end_x=None):
+        end_x = self.width if None else end_x
         next_x = start_x
         line_width = 0
-
         for px in self.yield_px_in_row(y, start_x, end_x):
             if px == next_x:
                 line_width += 1
@@ -188,16 +161,41 @@ class ST7735:
             yield next_x - line_width, next_x - 1
 
     def set_mono_framebuf_pixel(self, x, y, p):
-        buf = memoryview(self.draw_buf)
-        buf_width = self.width
-
-        pos = (y * buf_width) + x
+        buf = self.draw_buf_ref
+        pos = (y * self.width) + x
         mod = pos % 8
         pos = int((pos - mod) / 8)
         if p == 0:
             buf[pos] = buf[pos] & bitmask_inv[mod]
         else:
             buf[pos] = buf[pos] | bitmask[mod]
+
+class ST7735:
+    def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
+        self.dc_pin = Pin(dc, Pin.OUT, value=1)
+        self.cs_pin = Pin(cs, Pin.OUT, value=1)
+        self.rt_pin = Pin(rt, Pin.OUT, value=1)
+
+        self.sck_pin = Pin(sck, Pin.ALT_SPI)
+        self.mosi_pin = Pin(mosi, Pin.ALT_SPI)
+        self.miso_pin = Pin(miso, Pin.ALT_SPI)
+
+        self.height = height
+        self.width = width
+        self.c_offset = 24
+        self.r_offset = 0
+        self.flipped = False
+
+        self.mono_fb = MonoFrameBuffer(self.width, self.height)
+
+        # Theorhetical max is half of the system frequency (125MHz / 2)
+        self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
+
+        self.font_cache : array
+        self.font_cache_lookup : array
+        if cache_font:
+            self.font_cache_lookup = array("h", 127 * [0])
+            self.build_font_cache()
 
     def send_command(self, cmd, args = None):
         self.cs_pin.low()
@@ -232,8 +230,8 @@ class ST7735:
             self.height = self.width
             self.width = h
             self.flipped = flipped
-            self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
-            self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
+            # self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
+            # self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
 
         madctl_arg = (0x08, 0x6C, 0xDC, 0xB8)[r]
         if mirror_x:
@@ -274,11 +272,11 @@ class ST7735:
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
-    def find_rects_in_frame(self, start_x, end_x, start_y, end_y):
+    def find_rects_in_fb(self, start_x, end_x, start_y, end_y):
         # Helper function for checking if a line of pixels can extend down one level
         def can_expand_down(start_x, end_x, y):
             #for x in range(start_x, end_x):
-            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
+            for line_start_x,line_end_x in self.mono_fb.yield_lines_in_row(y, start_x, end_x):
                 return line_start_x == start_x and line_end_x == end_x
 
         def get_expanded_rect(start_x, end_x, y):
@@ -287,7 +285,7 @@ class ST7735:
             while can_expand_down(start_x, end_x, next_row):
                 # If it did expand down, unset the pixels expanded
                 for exp_x in range(start_x, end_x + 1):
-                    self.set_mono_framebuf_pixel(exp_x, next_row, 0)
+                    self.mono_fb.set_mono_framebuf_pixel(exp_x, next_row, 0)
                 next_row += 1
                 h += 1
             return (start_x, y, end_x - start_x + 1, h)
@@ -295,7 +293,7 @@ class ST7735:
         rects = []
         # For each row and column
         for y in range(start_y,end_y+1):
-            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
+            for line_start_x,line_end_x in self.mono_fb.yield_lines_in_row(y, start_x, end_x):
                 rects += get_expanded_rect(line_start_x, line_end_x, y)
 
         return rects
@@ -310,10 +308,10 @@ class ST7735:
                 self.font_cache_lookup[c] = -1
                 continue
             # Get the frame buffer to draw the character
-            self.frame_buf.fill_rect(0, 0, 8, 8, 0)
-            self.frame_buf.text(chr(c), 0, 0, 1)
+            self.mono_fb.fill_rect(0, 0, 8, 8, 0)
+            self.mono_fb.text(chr(c), 0, 0, 1)
 
-            char_rects = self.find_rects_in_frame(0, 7, 0, 7)
+            char_rects = self.find_rects_in_fb(0, 7, 0, 7)
 
             self.font_cache_lookup[c] = font_cache_pos
             len_char_rects = len(char_rects)
@@ -323,12 +321,12 @@ class ST7735:
         self.font_cache = array("B", all_rects)
 
     # Draw the pixels in the region defined in the frame buffer
-    def draw_frame_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
+    def draw_fb_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
         # Gain a few ms by making local function references
         draw_rect = self.draw_rect
 
         for y in range(start_y, end_y + 1):
-            for line_start_x,line_end_x in self.yield_lines_in_row(y, start_x, end_x):
+            for line_start_x,line_end_x in self.mono_fb.yield_lines_in_row(y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
                 draw_rect(line_start_x, y, draw_width, 1, c)
                 if convex:
@@ -342,9 +340,9 @@ class ST7735:
         text_width = min(8 * len(text), self.width - x)
         text_height = min(8, self.height - y)
 
-        self.frame_buf.fill_rect(x, y, text_width, text_height, 0)
-        self.frame_buf.text(text, x, y, 1)
-        self.draw_frame_pixels(x, x + text_width, y, y + text_height, c)
+        self.mono_fb.fill_rect(x, y, text_width, text_height, 0)
+        self.mono_fb.text(text, x, y, 1)
+        self.draw_fb_pixels(x, x + text_width, y, y + text_height, c)
 
     # Draw text using the font cache
     def draw_fast_text(self, text: str, x, y, c):
@@ -383,29 +381,29 @@ class ST7735:
         max_x = max(x1, x2)
         min_y = min(y1, y2)
         max_y = max(y1, y2)
-        self.frame_buf.fill_rect(min_x, min_y, max_x - min_x, max_y - min_y, 0)
-        self.frame_buf.line(x1, y1, x2, y2, 1)
-        self.draw_frame_pixels(min_x, max_x, min_y, max_y, c, convex=True)
+        self.mono_fb.fill_rect(min_x, min_y, max_x - min_x, max_y - min_y, 0)
+        self.mono_fb.line(x1, y1, x2, y2, 1)
+        self.draw_fb_pixels(min_x, max_x, min_y, max_y, c, convex=True)
 
     def draw_poly(self, x, y, coords, c, fill=True, convex=False):
         coord_array = array("i", coords)
         coord_len = len(coord_array)
         x_max = max([coord_array[i] for i in range(0, coord_len, 2)])
         y_max = max([coord_array[i] for i in range(1, coord_len, 2)])
-        self.frame_buf.fill_rect(x, y, x_max - x + 1, y_max - y + 1, 0)
-        self.frame_buf.poly(x, y, coord_array, c, fill)
-        self.draw_frame_pixels(x, x_max, y, y_max, c, convex)
+        self.mono_fb.fill_rect(x, y, x_max - x + 1, y_max - y + 1, 0)
+        self.mono_fb.poly(x, y, coord_array, c, fill)
+        self.draw_fb_pixels(x, x_max, y, y_max, c, convex)
 
     def draw_ellipse(self, x, y, rx, ry, c, fill=True):
         # Fill the top-left quadrant and use that to draw the whole shape
-        self.frame_buf.fill_rect(x - rx, y - ry, rx, ry, 0)
-        self.frame_buf.ellipse(x, y, rx, ry, 1, False, 2)
+        self.mono_fb.fill_rect(x - rx, y - ry, rx, ry, 0)
+        self.mono_fb.ellipse(x, y, rx, ry, 1, False, 2)
 
         # For each row and column
         rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
             try:
-                rect_start_x,rect_end_x = next(self.yield_lines_in_row(buf_y, x-rx, x))
+                rect_start_x,rect_end_x = next(self.mono_fb.yield_lines_in_row(buf_y, x-rx, x))
             except StopIteration:
                 continue
             rect_width = rect_end_x - rect_start_x + 1
