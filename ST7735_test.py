@@ -112,13 +112,27 @@ def test_svg(tft):
         svg_test = SVG.read_svg(f)
     tft.set_rotation(1)
     tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
     tft.draw_svg(svg_test)
+    print(f"Draw svg time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    start = time.ticks_ms()
+    c_svg = tft.create_cached_svg(svg_test)
+    print(f"Cache svg time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+
+    time.sleep(0.5)
+    tft.fill_screen(0xffff)
+
+    start = time.ticks_ms()
+    tft.draw_cached_svg(c_svg)
+    print(f"Draw cached svg time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 gc.collect()
 before = gc.mem_alloc()
 tft = ST7735()
-#test_svg(tft)
-test_tft(tft)
+test_svg(tft)
+#test_tft(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 

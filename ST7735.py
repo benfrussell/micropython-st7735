@@ -170,6 +170,34 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
         else:
             buf[pos] = buf[pos] | bitmask[mod]
 
+class CachedSVG:
+    def __init__(self):
+        self.rects = array("B", bytes())
+        self._rects_buffer = []
+        self._new_rect_data = []
+        self._new_rect_num = 0
+        self._colour = int16_to_bytes(0x0000)
+
+    def add_rect(self, x, y, w, h, c: bytes):
+        if c != self._colour:
+            if self._new_rect_num > 0:
+                self._add_rects_to_buffer()
+            self._colour = c
+        self._new_rect_data.extend([x, y, w, h])
+        self._new_rect_num += 1
+
+    def finish_caching(self):
+        self._add_rects_to_buffer()
+        self.rects = array("B", self._rects_buffer)
+        self._rects_buffer = []
+
+    def _add_rects_to_buffer(self):
+        for i in range(0, self._new_rect_num, 255):
+            self._rects_buffer.extend([self._colour[0], self._colour[1], min(255, self._new_rect_num - i)])
+            self._rects_buffer.extend(self._new_rect_data)
+        self._new_rect_data = []
+        self._new_rect_num = 0
+        
 class ST7735:
     def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
         self.dc_pin = Pin(dc, Pin.OUT, value=1)
@@ -196,6 +224,7 @@ class ST7735:
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
+        self._draw_to_cache = None
 
     def send_command(self, cmd, args = None):
         self.cs_pin.low()
@@ -240,29 +269,35 @@ class ST7735:
             madctl_arg = madctl_arg ^ 0x80
         self.send_command(ST7735_MADCTL, [madctl_arg])
 
-    def draw_rect(self, x, y, w, h, c, fill=True, thickness=1):
-        if fill:
-            # Set column range
-            c_offset = self.c_offset
-            caset_args = b''.join((
-                int16_to_bytes(c_offset + x),
-                int16_to_bytes(c_offset + x + w - 1)
-            ))
-            self.send_command(ST7735_CASET, caset_args)
-            # Set row range
-            r_offset = self.r_offset
-            raset_args = b''.join((
-                int16_to_bytes(r_offset + y),
-                int16_to_bytes(r_offset + y + h - 1)
-            ))
-            self.send_command(ST7735_RASET, raset_args)
-            # Start memory write
-            self.send_command(ST7735_RAMWR)
+    def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
 
-            self.cs_pin.low()
-            self.spi.write(int16_to_bytes(c) * (w * h))
-            self.cs_pin.high()
-            self.dc_pin.high()
+        if fill:
+            if self._draw_to_cache is not None:
+                self._draw_to_cache.add_rect(x, y, w, h, c)
+            else:
+                # Set column range
+                c_offset = self.c_offset
+                caset_args = b''.join((
+                    int16_to_bytes(c_offset + x),
+                    int16_to_bytes(c_offset + x + w - 1)
+                ))
+                self.send_command(ST7735_CASET, caset_args)
+                # Set row range
+                r_offset = self.r_offset
+                raset_args = b''.join((
+                    int16_to_bytes(r_offset + y),
+                    int16_to_bytes(r_offset + y + h - 1)
+                ))
+                self.send_command(ST7735_RASET, raset_args)
+                # Start memory write
+                self.send_command(ST7735_RAMWR)
+
+                self.cs_pin.low()
+                self.spi.write(c * (w * h))
+                self.cs_pin.high()
+                self.dc_pin.high()
         else:
             half_thick = int(thickness / 2)
             self.draw_rect(x - half_thick, y - half_thick, w + thickness, thickness, c)
@@ -275,7 +310,6 @@ class ST7735:
     def find_rects_in_fb(self, start_x, end_x, start_y, end_y):
         # Helper function for checking if a line of pixels can extend down one level
         def can_expand_down(start_x, end_x, y):
-            #for x in range(start_x, end_x):
             for line_start_x,line_end_x in self.mono_fb.yield_lines_in_row(y, start_x, end_x):
                 return line_start_x == start_x and line_end_x == end_x
 
@@ -419,6 +453,30 @@ class ST7735:
                 self.draw_rect(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height, c)
             else:
                 rect_height -= 2
+
+    def create_cached_svg(self, svg):
+        cached_svg = CachedSVG()
+        self._draw_to_cache = cached_svg
+        self.draw_svg(svg)
+        cached_svg.finish_caching()
+        self._draw_to_cache = None
+        return cached_svg
+        
+    def draw_cached_svg(self, cached_svg: CachedSVG, x = 0, y = 0):
+        i = 0
+        last_index = len(cached_svg.rects) - 1
+        while i < last_index:
+            c = bytes(cached_svg.rects[i:i+2])
+            num_rects = cached_svg.rects[i + 2]
+            i += 3
+            for _ in range(num_rects):
+                self.draw_rect(
+                    cached_svg.rects[i] + x, 
+                    cached_svg.rects[i + 1] + y, 
+                    cached_svg.rects[i + 2], 
+                    cached_svg.rects[i + 3],
+                    c)
+                i += 4
 
     def draw_svg(self, svg):
         for shape in svg.shapes:
