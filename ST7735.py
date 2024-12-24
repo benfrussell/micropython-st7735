@@ -2,7 +2,7 @@ from machine import Pin, SPI
 import time
 import framebuf
 from array import array
-from math import ceil, log, floor
+from math import ceil, log2, floor
 
 ST7735_NOP          = const(0x00)
 ST7735_SWRESET      = const(0x01)
@@ -119,7 +119,8 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
     def __init__(self, width: int, height: int):
         self.width = width
         self.draw_buf_size = ceil((width * height) / 8)
-        self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
+        
+        self.draw_buf = bytearray(self.draw_buf_size * [0x00])
         self.draw_buf_ref = memoryview(self.draw_buf)
         super().__init__(self.draw_buf_ref, width, height, framebuf.MONO_HLSB)
 
@@ -133,7 +134,7 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
 
         for b in buf[start_byte:ceil(top_pos / 8) + 1]:
             while b > 0:
-                bitlen = 7 - int(log(b,2))
+                bitlen = 7 - int(log2(b))
                 b = b & bitmask_inv[bitlen]
                 new_pos = pos + bitlen
                 if new_pos < bottom_pos:
@@ -199,7 +200,7 @@ class CachedSVG:
         self._new_rect_num = 0
         
 class ST7735:
-    def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
+    def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True):
         self.dc_pin = Pin(dc, Pin.OUT, value=1)
         self.cs_pin = Pin(cs, Pin.OUT, value=1)
         self.rt_pin = Pin(rt, Pin.OUT, value=1)

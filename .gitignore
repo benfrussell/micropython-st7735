@@ -1,3 +1,5 @@
 .picowgo
 .vscode
 .micropico
+.venv
+typings

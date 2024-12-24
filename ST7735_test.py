@@ -24,11 +24,16 @@ def test_tft(tft):
         tft.fill_screen(random_16bit_color())
         fills -= 1
     print(f"Fill time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
+    time.sleep_ms(1500)
 
     test_text(tft)
+    time.sleep_ms(1500)
     test_lines(tft)
+    time.sleep_ms(1500)
     test_ellipses(tft)
+    time.sleep_ms(1500)
     test_poly(tft)
+    time.sleep_ms(1500)
 
     tft.fill_screen(0xffff)
 
@@ -38,6 +43,7 @@ def test_tft(tft):
         tft.draw_rect(0, 0, 80, 160, 0x0000, False, t)
         t += 1
     print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
+    time.sleep_ms(1500)
 
 def test_text(tft):
     tft.fill_screen(0xffff)
@@ -130,9 +136,10 @@ def test_svg(tft):
 
 gc.collect()
 before = gc.mem_alloc()
-tft = ST7735()
-test_svg(tft)
-#test_tft(tft)
+#     def __init__(self, dc=22, cs=21, rt=20, sck=18, mosi=19, miso=16, spi_port=0, baud=62_500_000, height=160, width=80, cache_font=True):
+tft = ST7735(dc=22, cs=21, rt=15, sck=18, mosi=19, miso=16, spi_port=0)
+#test_svg(tft)
+test_tft(tft)
 gc.collect()
 print(f"{gc.mem_alloc() - before} bytes in memory")
 
