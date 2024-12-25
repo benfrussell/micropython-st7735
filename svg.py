@@ -1,3 +1,5 @@
+from array import array
+
 try:
     import colours
 except ImportError:
@@ -232,3 +234,59 @@ class SimpleXMLReader:
                 else:
                     self._attr_value += char
         return self._elements
+    
+def int16_to_bytes(i: int):
+    return bytes([(i >> 8) & 0xFF, i & 0xFF])
+    
+class CachedSVG:
+    def __init__(self):
+        self.rects = array("B", bytes())
+        self._rects_buffer = []
+        self._new_rect_data = []
+        self._new_rect_num = 0
+        self._colour = int16_to_bytes(0x0000)
+
+    def add_rect(self, x, y, w, h, c: bytes):
+        if c != self._colour:
+            if self._new_rect_num > 0:
+                self._add_rects_to_buffer()
+            self._colour = c
+        self._new_rect_data.extend([x, y, w, h])
+        self._new_rect_num += 1
+
+    def finish_caching(self):
+        self._add_rects_to_buffer()
+        self.rects = array("B", self._rects_buffer)
+        self._rects_buffer = []
+
+    def _add_rects_to_buffer(self):
+        for i in range(0, self._new_rect_num, 255):
+            self._rects_buffer.extend([self._colour[0], self._colour[1], min(255, self._new_rect_num - i)])
+            self._rects_buffer.extend(self._new_rect_data)
+        self._new_rect_data = []
+        self._new_rect_num = 0
+
+
+def create_cached_svg(self, svg):
+    cached_svg = CachedSVG()
+    self._draw_to_cache = cached_svg
+    self.draw_svg(svg)
+    cached_svg.finish_caching()
+    self._draw_to_cache = None
+    return cached_svg
+    
+def draw_cached_svg(self, cached_svg: CachedSVG, x = 0, y = 0):
+    i = 0
+    last_index = len(cached_svg.rects) - 1
+    while i < last_index:
+        c = bytes(cached_svg.rects[i:i+2])
+        num_rects = cached_svg.rects[i + 2]
+        i += 3
+        for _ in range(num_rects):
+            self.draw_rect(
+                cached_svg.rects[i] + x, 
+                cached_svg.rects[i + 1] + y, 
+                cached_svg.rects[i + 2], 
+                cached_svg.rects[i + 3],
+                c)
+            i += 4
