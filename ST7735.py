@@ -3,6 +3,7 @@ import time
 import framebuf
 from array import array
 from math import ceil, log2, floor
+from collections.abc import Iterator
 
 ST7735_NOP          = const(0x00)
 ST7735_SWRESET      = const(0x01)
@@ -114,6 +115,31 @@ def rgb_to_565(rgb):
     b5 = (b >> 3) & 0x1F  # 5 bits for blue
     return (r5 << 11) | (g6 << 5) | b5
 
+class Renderer:
+    def draw_rect(self, x, y, w, h, fill, thickness) -> bytes:
+        raise NotImplementedError()
+
+    def draw_text(self, text, x, y) -> Iterator[bytes]:
+        raise NotImplementedError()
+
+    def draw_hline(self, x, y, w) -> bytes:
+        raise NotImplementedError()
+
+    def draw_vline(self, x, y, h) -> bytes:
+        raise NotImplementedError()
+
+    def draw_line(self, x1, y1, x2, y2) -> Iterator[bytes]:
+        raise NotImplementedError()
+
+    def draw_poly(self, x, y, coords, fill, convex) -> Iterator[bytes]:
+        raise NotImplementedError()
+
+    def draw_ellipse(self, x, y, rx, ry, fill) -> Iterator[bytes]:
+        raise NotImplementedError()
+
+    def draw_svg(self, svg) -> Iterator[tuple[int, bytes]]:
+        raise NotImplementedError()
+
 # A mono-only frame buffer built for fast pixel yields
 class MonoFrameBuffer(framebuf.FrameBuffer):
     def __init__(self, width: int, height: int):
@@ -124,7 +150,7 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
         self.draw_buf_ref = memoryview(self.draw_buf)
         super().__init__(self.draw_buf_ref, width, height, framebuf.MONO_HLSB)
 
-    def yield_px_in_row(self, y, start_x, end_x):
+    def yield_px_in_row(self, y, start_x, end_x) -> Iterator[int]:
         buf = self.draw_buf_ref
         buf_width = self.width
         bottom_pos = y * buf_width + start_x
@@ -145,7 +171,7 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
                 yield new_pos % buf_width
             pos += 8
 
-    def yield_lines_in_row(self, y, start_x=0, end_x=None):
+    def yield_lines_in_row(self, y, start_x=0, end_x=None) -> Iterator[tuple[int, int]]:
         end_x = self.width if None else end_x
         next_x = start_x
         line_width = 0
@@ -170,27 +196,12 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
             buf[pos] = buf[pos] & bitmask_inv[mod]
         else:
             buf[pos] = buf[pos] | bitmask[mod]
-        
-class ST7735:
-    def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True):
-        self.dc_pin = Pin(dc, Pin.OUT, value=1)
-        self.cs_pin = Pin(cs, Pin.OUT, value=1)
-        self.rt_pin = Pin(rt, Pin.OUT, value=1)
 
-        self.sck_pin = Pin(sck, Pin.ALT_SPI)
-        self.mosi_pin = Pin(mosi, Pin.ALT_SPI)
-        self.miso_pin = Pin(miso, Pin.ALT_SPI)
-
-        self.height = height
+class MonoFrameBufRenderer(Renderer):
+    def __init__(self, width, height, cache_font) -> None:
         self.width = width
-        self.c_offset = 24
-        self.r_offset = 0
-        self.flipped = False
-
+        self.height = height
         self.mono_fb = MonoFrameBuffer(self.width, self.height)
-
-        # Theorhetical max is half of the system frequency (125MHz / 2)
-        self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
 
         self.font_cache : array
         self.font_cache_lookup : array
@@ -198,81 +209,8 @@ class ST7735:
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
 
-    def send_command(self, cmd, args = None):
-        self.cs_pin.low()
-        self.dc_pin.low()
-        self.spi.write(bytes([cmd]))
-        self.cs_pin.high()
-        self.dc_pin.high()
-
-        if args is not None and len(args) > 0:
-            self.cs_pin.low()
-            self.spi.write(bytes(args))
-            self.cs_pin.high()
-            self.dc_pin.high()
-
-    def tft_initialize(self):
-        self.rt_pin.low()
-        time.sleep_ms(100)
-        self.rt_pin.high()
-        time.sleep_ms(220)
-
-        for cmd in init_cmds:
-            self.send_command(cmd[0], None if len(cmd) == 1 else cmd[1:])
-
-    def set_rotation(self, rotation, mirror_x=False, mirror_y=False):
-        r = rotation % 4
-
-        flipped = rotation % 2 == 1
-        self.c_offset = 24 if not flipped else 0
-        self.r_offset = 24 if flipped else 0
-        if flipped != self.flipped:
-            h = self.height
-            self.height = self.width
-            self.width = h
-            self.flipped = flipped
-            # self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
-            # self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
-
-        madctl_arg = (0x08, 0x6C, 0xDC, 0xB8)[r]
-        if mirror_x:
-            madctl_arg = madctl_arg ^ 0x40
-        if mirror_y:
-            madctl_arg = madctl_arg ^ 0x80
-        self.send_command(ST7735_MADCTL, [madctl_arg])
-
     def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
-
-        if fill:
-            # Set column range
-            c_offset = self.c_offset
-            caset_args = b''.join((
-                int16_to_bytes(c_offset + x),
-                int16_to_bytes(c_offset + x + w - 1)
-            ))
-            self.send_command(ST7735_CASET, caset_args)
-            # Set row range
-            r_offset = self.r_offset
-            raset_args = b''.join((
-                int16_to_bytes(r_offset + y),
-                int16_to_bytes(r_offset + y + h - 1)
-            ))
-            self.send_command(ST7735_RASET, raset_args)
-            # Start memory write
-            self.send_command(ST7735_RAMWR)
-
-            self.cs_pin.low()
-            self.spi.write(c * (w * h))
-            self.cs_pin.high()
-            self.dc_pin.high()
-        else:
-            half_thick = int(thickness / 2)
-            self.draw_rect(x - half_thick, y - half_thick, w + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + h - half_thick, w + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + half_thick, thickness, h - thickness, c)
-            self.draw_rect(x + w - half_thick, y + half_thick, thickness, h - thickness, c)
+        pass
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
@@ -335,7 +273,7 @@ class ST7735:
                 if convex:
                     break
 
-    def fill_screen(self, c):
+    def fill(self, c):
         self.draw_rect(0, 0, self.width, self.height, c)
 
     # Draw text pixel by pixel
@@ -469,5 +407,100 @@ class ST7735:
                         shape.attributes['x2'], 
                         shape.attributes['y2'], 
                         rgb_to_565(shape.attributes['stroke']))
+        
+class ST7735:
+    def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True):
+        self.dc_pin = Pin(dc, Pin.OUT, value=1)
+        self.cs_pin = Pin(cs, Pin.OUT, value=1)
+        self.rt_pin = Pin(rt, Pin.OUT, value=1)
+
+        self.sck_pin = Pin(sck, Pin.ALT_SPI)
+        self.mosi_pin = Pin(mosi, Pin.ALT_SPI)
+        self.miso_pin = Pin(miso, Pin.ALT_SPI)
+
+        self.height = height
+        self.width = width
+        self.c_offset = 24
+        self.r_offset = 0
+        self.flipped = False
+
+        # Theorhetical max is half of the system frequency (125MHz / 2)
+        self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
+
+    def send_command(self, cmd, args = None):
+        self.cs_pin.low()
+        self.dc_pin.low()
+        self.spi.write(bytes([cmd]))
+        self.cs_pin.high()
+        self.dc_pin.high()
+
+        if args is not None and len(args) > 0:
+            self.cs_pin.low()
+            self.spi.write(bytes(args))
+            self.cs_pin.high()
+            self.dc_pin.high()
+
+    def tft_initialize(self):
+        self.rt_pin.low()
+        time.sleep_ms(100)
+        self.rt_pin.high()
+        time.sleep_ms(220)
+
+        for cmd in init_cmds:
+            self.send_command(cmd[0], None if len(cmd) == 1 else cmd[1:])
+
+    def set_rotation(self, rotation, mirror_x=False, mirror_y=False):
+        r = rotation % 4
+
+        flipped = rotation % 2 == 1
+        self.c_offset = 24 if not flipped else 0
+        self.r_offset = 24 if flipped else 0
+        if flipped != self.flipped:
+            h = self.height
+            self.height = self.width
+            self.width = h
+            self.flipped = flipped
+            # self.draw_buf = array("B", bytes(self.draw_buf_size * [0x00]))
+            # self.frame_buf = framebuf.FrameBuffer(memoryview(self.draw_buf), self.width, self.height, framebuf.MONO_HLSB)
+
+        madctl_arg = (0x08, 0x6C, 0xDC, 0xB8)[r]
+        if mirror_x:
+            madctl_arg = madctl_arg ^ 0x40
+        if mirror_y:
+            madctl_arg = madctl_arg ^ 0x80
+        self.send_command(ST7735_MADCTL, [madctl_arg])
+
+    def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+
+        if fill:
+            # Set column range
+            c_offset = self.c_offset
+            caset_args = b''.join((
+                int16_to_bytes(c_offset + x),
+                int16_to_bytes(c_offset + x + w - 1)
+            ))
+            self.send_command(ST7735_CASET, caset_args)
+            # Set row range
+            r_offset = self.r_offset
+            raset_args = b''.join((
+                int16_to_bytes(r_offset + y),
+                int16_to_bytes(r_offset + y + h - 1)
+            ))
+            self.send_command(ST7735_RASET, raset_args)
+            # Start memory write
+            self.send_command(ST7735_RAMWR)
+
+            self.cs_pin.low()
+            self.spi.write(c * (w * h))
+            self.cs_pin.high()
+            self.dc_pin.high()
+        else:
+            half_thick = int(thickness / 2)
+            self.draw_rect(x - half_thick, y - half_thick, w + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + h - half_thick, w + thickness, thickness, c)
+            self.draw_rect(x - half_thick, y + half_thick, thickness, h - thickness, c)
+            self.draw_rect(x + w - half_thick, y + half_thick, thickness, h - thickness, c)
         
         
