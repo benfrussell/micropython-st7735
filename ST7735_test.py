@@ -52,15 +52,7 @@ def test_text(tft):
     for r in range(11):
         text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
         tft.draw_text(text, 5, r * 8 + 5, 0x0000)
-    print(f"Slow text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
-
-    tft.fill_screen(0xffff)
-
-    start = time.ticks_ms()
-    for r in range(11):
-        text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_fast_text(text, 5, r * 8 + 5, 0x0000)
-    print(f"Cached text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
+    print(f"Text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_ellipses(tft):
     tft.fill_screen(0xffff)

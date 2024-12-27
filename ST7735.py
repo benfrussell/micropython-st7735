@@ -3,7 +3,6 @@ import time
 import framebuf
 from array import array
 from math import ceil, log2, floor
-from collections.abc import Iterator
 
 ST7735_NOP          = const(0x00)
 ST7735_SWRESET      = const(0x01)
@@ -116,28 +115,28 @@ def rgb_to_565(rgb):
     return (r5 << 11) | (g6 << 5) | b5
 
 class Renderer:
-    def draw_rect(self, x, y, w, h, fill, thickness) -> bytes:
+    def draw_rect(self, x, y, w, h, fill, thickness):
         raise NotImplementedError()
 
-    def draw_text(self, text, x, y) -> Iterator[bytes]:
+    def draw_text(self, text, x, y):
         raise NotImplementedError()
 
-    def draw_hline(self, x, y, w) -> bytes:
+    def draw_hline(self, x, y, w):
         raise NotImplementedError()
 
-    def draw_vline(self, x, y, h) -> bytes:
+    def draw_vline(self, x, y, h):
         raise NotImplementedError()
 
-    def draw_line(self, x1, y1, x2, y2) -> Iterator[bytes]:
+    def draw_line(self, x1, y1, x2, y2):
         raise NotImplementedError()
 
-    def draw_poly(self, x, y, coords, fill, convex) -> Iterator[bytes]:
+    def draw_poly(self, x, y, coords, fill, convex):
         raise NotImplementedError()
 
-    def draw_ellipse(self, x, y, rx, ry, fill) -> Iterator[bytes]:
+    def draw_ellipse(self, x, y, rx, ry, fill):
         raise NotImplementedError()
 
-    def draw_svg(self, svg) -> Iterator[tuple[int, bytes]]:
+    def draw_svg(self, svg):
         raise NotImplementedError()
 
 # A mono-only frame buffer built for fast pixel yields
@@ -150,7 +149,7 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
         self.draw_buf_ref = memoryview(self.draw_buf)
         super().__init__(self.draw_buf_ref, width, height, framebuf.MONO_HLSB)
 
-    def yield_px_in_row(self, y, start_x, end_x) -> Iterator[int]:
+    def yield_px_in_row(self, y, start_x, end_x):
         buf = self.draw_buf_ref
         buf_width = self.width
         bottom_pos = y * buf_width + start_x
@@ -171,7 +170,7 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
                 yield new_pos % buf_width
             pos += 8
 
-    def yield_lines_in_row(self, y, start_x=0, end_x=None) -> Iterator[tuple[int, int]]:
+    def yield_lines_in_row(self, y, start_x=0, end_x=None):
         end_x = self.width if None else end_x
         next_x = start_x
         line_width = 0
@@ -208,9 +207,6 @@ class MonoFrameBufRenderer(Renderer):
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
-
-    def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
-        pass
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
@@ -262,31 +258,34 @@ class MonoFrameBufRenderer(Renderer):
         self.font_cache = array("B", all_rects)
 
     # Draw the pixels in the region defined in the frame buffer
-    def draw_fb_pixels(self, start_x, end_x, start_y, end_y, c, convex=False):
-        # Gain a few ms by making local function references
-        draw_rect = self.draw_rect
-
+    def draw_fb_pixels(self, start_x, end_x, start_y, end_y, convex=False):
         for y in range(start_y, end_y + 1):
             for line_start_x,line_end_x in self.mono_fb.yield_lines_in_row(y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
-                draw_rect(line_start_x, y, draw_width, 1, c)
+                yield bytes((line_start_x, y, draw_width, 1))
                 if convex:
                     break
 
-    def fill(self, c):
-        self.draw_rect(0, 0, self.width, self.height, c)
-
-    # Draw text pixel by pixel
-    def draw_text(self, text, x, y, c):
-        text_width = min(8 * len(text), self.width - x)
-        text_height = min(8, self.height - y)
-
-        self.mono_fb.fill_rect(x, y, text_width, text_height, 0)
-        self.mono_fb.text(text, x, y, 1)
-        self.draw_fb_pixels(x, x + text_width, y, y + text_height, c)
+    def draw_rect(self, x, y, w, h, fill=True, thickness=1):
+        if fill:
+            yield bytes((x, y, w, h))
+        else:
+            # Broken
+            return
+            half_thick = int(thickness / 2)
+            l_edge = max(0, x - half_thick)
+            t_edge = max(0, y - half_thick)
+            # Top rect
+            yield bytes((l_edge, t_edge, w + thickness, thickness))
+            # Bottom rect
+            yield bytes((l_edge, t_edge + h, w + thickness, thickness))
+            # Left rect
+            yield bytes((l_edge, y + half_thick, thickness, h - thickness))
+            # Right rect
+            yield bytes((x + w - half_thick, y + half_thick, thickness, h - thickness))
 
     # Draw text using the font cache
-    def draw_fast_text(self, text: str, x, y, c):
+    def draw_text(self, text: str, x, y):
         x_pos = x
         cache_len = len(self.font_cache_lookup)
 
@@ -299,43 +298,47 @@ class MonoFrameBufRenderer(Renderer):
                     # The first byte tells you how many rectangles are in this character
                     num_rects = self.font_cache[font_cache_pos] 
                     for _ in range(num_rects):
-                        self.draw_rect(
+                        yield bytes((
                             self.font_cache[font_cache_pos + 1] + x_pos, 
                             self.font_cache[font_cache_pos + 2] + y, 
                             self.font_cache[font_cache_pos + 3], 
-                            self.font_cache[font_cache_pos + 4],
-                            c)
+                            self.font_cache[font_cache_pos + 4]))
                         # Advance 4 bytes to the next rectangle
                         font_cache_pos += 4
+            else:
+                self.mono_fb.fill_rect(x, y, 8, 8, 0)
+                self.mono_fb.text(text, x, y, 1)
+                yield from self.draw_fb_pixels(x, x + 8, y, y + 8)
+
             x_pos += 8
             if x_pos > self.width:
                 return
 
-    def draw_hline(self, x, y, w, c):
-        self.draw_rect(x, y, w, 1, c)
+    def draw_hline(self, x, y, w):
+        return bytes((x, y, w, 1))
 
-    def draw_vline(self, x, y, h, c):
-        self.draw_rect(x, y, 1, h, c)
+    def draw_vline(self, x, y, h):
+        return bytes((x, y, 1, h))
 
-    def draw_line(self, x1, y1, x2, y2, c):
+    def draw_line(self, x1, y1, x2, y2):
         min_x = min(x1, x2)
         max_x = max(x1, x2)
         min_y = min(y1, y2)
         max_y = max(y1, y2)
         self.mono_fb.fill_rect(min_x, min_y, max_x - min_x, max_y - min_y, 0)
         self.mono_fb.line(x1, y1, x2, y2, 1)
-        self.draw_fb_pixels(min_x, max_x, min_y, max_y, c, convex=True)
+        yield from self.draw_fb_pixels(min_x, max_x, min_y, max_y, convex=True)
 
-    def draw_poly(self, x, y, coords, c, fill=True, convex=False):
+    def draw_poly(self, x, y, coords, fill=True, convex=False):
         coord_array = array("i", coords)
         coord_len = len(coord_array)
         x_max = max([coord_array[i] for i in range(0, coord_len, 2)])
         y_max = max([coord_array[i] for i in range(1, coord_len, 2)])
         self.mono_fb.fill_rect(x, y, x_max - x + 1, y_max - y + 1, 0)
-        self.mono_fb.poly(x, y, coord_array, c, fill)
-        self.draw_fb_pixels(x, x_max, y, y_max, c, convex)
+        self.mono_fb.poly(x, y, coord_array, fill)
+        yield from self.draw_fb_pixels(x, x_max, y, y_max, convex)
 
-    def draw_ellipse(self, x, y, rx, ry, c, fill=True):
+    def draw_ellipse(self, x, y, rx, ry, fill=True):
         # Fill the top-left quadrant and use that to draw the whole shape
         self.mono_fb.fill_rect(x - rx, y - ry, rx, ry, 0)
         self.mono_fb.ellipse(x, y, rx, ry, 1, False, 2)
@@ -349,15 +352,15 @@ class MonoFrameBufRenderer(Renderer):
                 continue
             rect_width = rect_end_x - rect_start_x + 1
             # Draw the left rectangle
-            self.draw_rect(rect_start_x, buf_y, rect_width, rect_height, c)
+            yield bytes((rect_start_x, buf_y, rect_width, rect_height))
             # Draw the right rectangle
-            self.draw_rect(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height, c)
+            yield bytes((x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height))
 
             if fill is False:
                 # Draw the left bottom rectangle
-                self.draw_rect(rect_start_x, y + (y - buf_y), rect_width, rect_height, c)
+                yield bytes((rect_start_x, y + (y - buf_y), rect_width, rect_height))
                 # Draw the right bottom rectangle
-                self.draw_rect(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height, c)
+                yield bytes((x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height))
             else:
                 rect_height -= 2
 
@@ -366,50 +369,59 @@ class MonoFrameBufRenderer(Renderer):
             name = shape.name
             if name is "rect":
                 if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
-                    self.draw_rect(
+                    c = rgb_to_565(shape.attributes['fill'])
+                    yield (c, bytes((
                         shape.attributes['x'],
                         shape.attributes['y'],
                         shape.attributes['width'],
-                        shape.attributes['height'],
-                        rgb_to_565(shape.attributes['fill']))
+                        shape.attributes['height']
+                    )))
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    self.draw_rect(
-                        shape.attributes['x'],
+                    c = rgb_to_565(shape.attributes['stroke'])
+                    iterator = self.draw_rect(
+                        shape.attributes['x'], 
                         shape.attributes['y'],
                         shape.attributes['width'],
                         shape.attributes['height'],
-                        rgb_to_565(shape.attributes['stroke']),
                         fill=False,
                         thickness=shape.attributes['stroke-width'])
+                    for i in iterator:
+                        yield (c, i)
             elif name is "circle" or name is "ellipse":
                 rx = shape.attributes['rx'] if name is "ellipse" else shape.attributes['r']
                 ry = shape.attributes['ry'] if name is "ellipse" else shape.attributes['r']
                 if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
-                    self.draw_ellipse(
+                    c = rgb_to_565(shape.attributes['fill'])
+                    iterator = self.draw_ellipse(
                         shape.attributes['cx'], 
                         shape.attributes['cy'], 
                         rx, 
-                        ry, 
-                        rgb_to_565(shape.attributes['fill']))
+                        ry)
+                    for i in iterator:
+                        yield (c, i)
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    self.draw_ellipse(
+                    c = rgb_to_565(shape.attributes['stroke'])
+                    iterator = self.draw_ellipse(
                         shape.attributes['cx'], 
                         shape.attributes['cy'], 
                         rx, 
                         ry, 
-                        rgb_to_565(shape.attributes['stroke']), 
                         False)
+                    for i in iterator:
+                        yield (c, i)
             elif name is "line":
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    self.draw_line(
+                    c = rgb_to_565(shape.attributes['stroke'])
+                    iterator = self.draw_line(
                         shape.attributes['x1'], 
                         shape.attributes['y1'], 
                         shape.attributes['x2'], 
-                        shape.attributes['y2'], 
-                        rgb_to_565(shape.attributes['stroke']))
+                        shape.attributes['y2'])
+                    for i in iterator:
+                        yield (c, i)
         
 class ST7735:
-    def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True):
+    def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True, renderer: Renderer | None = None):
         self.dc_pin = Pin(dc, Pin.OUT, value=1)
         self.cs_pin = Pin(cs, Pin.OUT, value=1)
         self.rt_pin = Pin(rt, Pin.OUT, value=1)
@@ -426,6 +438,11 @@ class ST7735:
 
         # Theorhetical max is half of the system frequency (125MHz / 2)
         self.spi = SPI(spi_port, baud, polarity=0, phase=0, firstbit=SPI.MSB, sck=self.sck_pin, mosi=self.mosi_pin, miso=self.miso_pin)
+        if renderer is None:
+            self.renderer = MonoFrameBufRenderer(width, height, cache_font)
+        else:
+            self.renderer = renderer
+
 
     def send_command(self, cmd, args = None):
         self.cs_pin.low()
@@ -470,37 +487,80 @@ class ST7735:
             madctl_arg = madctl_arg ^ 0x80
         self.send_command(ST7735_MADCTL, [madctl_arg])
 
+    def send_rect(self, x, y, w, h, c: bytes):
+        # Set column range
+        c_offset = self.c_offset
+        caset_args = b''.join((
+            int16_to_bytes(c_offset + x),
+            int16_to_bytes(c_offset + x + w - 1)
+        ))
+        self.send_command(ST7735_CASET, caset_args)
+        # Set row range
+        r_offset = self.r_offset
+        raset_args = b''.join((
+            int16_to_bytes(r_offset + y),
+            int16_to_bytes(r_offset + y + h - 1)
+        ))
+        self.send_command(ST7735_RASET, raset_args)
+        # Start memory write
+        self.send_command(ST7735_RAMWR)
+
+        self.cs_pin.low()
+        self.spi.write(c * (w * h))
+        self.cs_pin.high()
+        self.dc_pin.high()
+
+    def fill_screen(self, c: int | bytes):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        self.send_rect(0, 0, self.width, self.height, c)
+
     def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
         if isinstance(c, int):
             c = int16_to_bytes(c)
+        for b in self.renderer.draw_rect(x, y, w, h, fill, thickness):
+            self.send_rect(b[0], b[1], b[2], b[3], c)
 
-        if fill:
-            # Set column range
-            c_offset = self.c_offset
-            caset_args = b''.join((
-                int16_to_bytes(c_offset + x),
-                int16_to_bytes(c_offset + x + w - 1)
-            ))
-            self.send_command(ST7735_CASET, caset_args)
-            # Set row range
-            r_offset = self.r_offset
-            raset_args = b''.join((
-                int16_to_bytes(r_offset + y),
-                int16_to_bytes(r_offset + y + h - 1)
-            ))
-            self.send_command(ST7735_RASET, raset_args)
-            # Start memory write
-            self.send_command(ST7735_RAMWR)
+    def draw_text(self, text, x, y, c: int | bytes):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        for b in self.renderer.draw_text(text, x, y):
+            self.send_rect(b[0], b[1], b[2], b[3], c)
 
-            self.cs_pin.low()
-            self.spi.write(c * (w * h))
-            self.cs_pin.high()
-            self.dc_pin.high()
-        else:
-            half_thick = int(thickness / 2)
-            self.draw_rect(x - half_thick, y - half_thick, w + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + h - half_thick, w + thickness, thickness, c)
-            self.draw_rect(x - half_thick, y + half_thick, thickness, h - thickness, c)
-            self.draw_rect(x + w - half_thick, y + half_thick, thickness, h - thickness, c)
+    def draw_hline(self, x, y, w, c: int | bytes):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        b = self.renderer.draw_hline(x, y, w)
+        self.send_rect(b[0], b[1], b[2], b[3], c)
+
+    def draw_vline(self, x, y, h, c: int | bytes):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        b = self.renderer.draw_vline(x, y, h)
+        self.send_rect(b[0], b[1], b[2], b[3], c)
+
+    def draw_line(self, x1, y1, x2, y2, c: int | bytes):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        for b in self.renderer.draw_line(x1, y1, x2, y2):
+            self.send_rect(b[0], b[1], b[2], b[3], c)
+
+    def draw_poly(self, x, y, coords, c: int | bytes, fill=True, convex=False):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        for b in self.renderer.draw_poly(x, y, coords, fill, convex):
+            self.send_rect(b[0], b[1], b[2], b[3], c)
+
+    def draw_ellipse(self, x, y, rx, ry, c: int | bytes, fill = True):
+        if isinstance(c, int):
+            c = int16_to_bytes(c)
+        for b in self.renderer.draw_ellipse(x, y, rx, ry, fill):
+            self.send_rect(b[0], b[1], b[2], b[3], c)
+
+    def draw_svg(self, svg):
+        for c, b in self.renderer.draw_svg(svg):
+            if isinstance(c, int):
+                c = int16_to_bytes(c)
+            self.send_rect(b[0], b[1], b[2], b[3], c)
         
         
