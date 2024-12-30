@@ -196,33 +196,14 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
         else:
             buf[pos] = buf[pos] | bitmask[mod]
 
-class RectBuffer(bytearray):
-    def __init__(self, num_rects):
-        self.pos = 0
-        self.len = num_rects * 4
-        super().__init__(num_rects * 4 * [0x00])
-
-    def add(self, x, y, w, h) -> bool:
-        pos = self.pos
-        self[pos] = x
-        self[pos + 1] = y
-        self[pos + 2] = w
-        self[pos + 3] = h
-        self.pos = pos + 4
-        if self.pos > self.len - 1:
-            return True
-        return False
-    
-    def clear(self):
-        self.pos = 0
+class RectArray(bytearray):
+    pass
         
 class MonoFrameBufRenderer(Renderer):
     def __init__(self, width, height, cache_font) -> None:
         self.width = width
         self.height = height
         self.mono_fb = MonoFrameBuffer(self.width, self.height)
-        self.rect_buf = RectBuffer(1024)
-        self.rect_buf_ref = memoryview(self.rect_buf)
 
         self.font_cache : array
         self.font_cache_lookup : array
@@ -254,7 +235,6 @@ class MonoFrameBufRenderer(Renderer):
         for y in range(start_y,end_y+1):
             for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
                 rects += get_expanded_rect(line_start_x, line_end_x, y)
-
         return rects
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
@@ -281,40 +261,36 @@ class MonoFrameBufRenderer(Renderer):
 
     # Draw the pixels in the region defined in the frame buffer
     def draw_fb_pixels(self, start_x, end_x, start_y, end_y, convex=False):
-        rect_buf = self.rect_buf
+        rect_buf = RectArray()
         for y in range(start_y, end_y + 1):
             for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
-                full = rect_buf.add(line_start_x, y, draw_width, 1)
-                if full:
-                    yield self.rect_buf_ref
-                    rect_buf.clear()
+                rect_buf.extend(RectArray((line_start_x, y, draw_width, 1)))
                 if convex:
                     break
-        yield self.rect_buf_ref[0:rect_buf.pos]
-        rect_buf.clear()
+        return memoryview(rect_buf)
 
     def draw_rect(self, x, y, w, h, fill=True, thickness=1):
         if fill:
-            yield bytearray((x, y, w, h))
+            return memoryview(RectArray((x, y, w, h)))
         else:
             # Broken
             half_thick = int(thickness / 2)
             l_edge = max(0, x - half_thick)
             t_edge = max(0, y - half_thick)
             # Top, left, bottom, right
-            yield bytearray((
+            return memoryview(RectArray((
                 l_edge, t_edge, w + thickness, thickness,
                 l_edge, t_edge + h, w + thickness, thickness,
                 l_edge, y + half_thick, thickness, h - thickness,
                 x + w - half_thick, y + half_thick, thickness, h - thickness
-            ))
+            )))
 
     # Draw text using the font cache
     def draw_text(self, text: str, x, y):
         x_pos = x
         cache_len = len(self.font_cache_lookup)
-        rect_buf = self.rect_buf
+        rect_buf = RectArray()
         
         for symbol in text:
             symbol_ord = ord(symbol)
@@ -323,35 +299,27 @@ class MonoFrameBufRenderer(Renderer):
                 font_cache_pos = self.font_cache_lookup[symbol_ord]
                 if font_cache_pos > -1:
                     # The first byte tells you how many rectangles are in this character
-                    num_rects = self.font_cache[font_cache_pos] 
-                    for _ in range(num_rects):
-                        full = rect_buf.add(
-                            self.font_cache[font_cache_pos + 1] + x_pos, 
-                            self.font_cache[font_cache_pos + 2] + y, 
-                            self.font_cache[font_cache_pos + 3], 
-                            self.font_cache[font_cache_pos + 4])
-                        if full:
-                            yield self.rect_buf_ref
-                            rect_buf.clear()
-                        # Advance 4 bytes to the next rectangle
-                        font_cache_pos += 4
+                    num_rects = self.font_cache[font_cache_pos]
+                    symbol_rects = self.font_cache[font_cache_pos + 1:font_cache_pos + 1 + (4 * num_rects)]
+                    for r in range(num_rects):
+                        symbol_rects[(r * 4)] = symbol_rects[(r * 4)] + x_pos
+                        symbol_rects[(r * 4) + 1] = symbol_rects[(r * 4) + 1] + y
+                    rect_buf.extend(symbol_rects)
             else:
-                if rect_buf.pos > 0:
-                    yield self.rect_buf_ref
-                    rect_buf.clear()
                 self.mono_fb.fill_rect(x, y, 8, 8, 0)
                 self.mono_fb.text(text, x, y, 1)
-                yield from self.draw_fb_pixels(x, x + 8, y, y + 8)
+                rect_buf.extend(self.draw_fb_pixels(x, x + 8, y, y + 8))
 
             x_pos += 8
             if x_pos > self.width:
-                return
+                return memoryview(rect_buf)
+        return memoryview(rect_buf)
 
     def draw_hline(self, x, y, w):
-        return bytearray((x, y, w, 1))
+        return memoryview(RectArray((x, y, w, 1)))
 
     def draw_vline(self, x, y, h):
-        return bytearray((x, y, 1, h))
+        return memoryview(RectArray((x, y, 1, h)))
 
     def draw_line(self, x1, y1, x2, y2):
         min_x = min(x1, x2)
@@ -360,7 +328,7 @@ class MonoFrameBufRenderer(Renderer):
         max_y = max(y1, y2)
         self.mono_fb.fill_rect(min_x, min_y, max_x - min_x, max_y - min_y, 0)
         self.mono_fb.line(x1, y1, x2, y2, 1)
-        yield from self.draw_fb_pixels(min_x, max_x, min_y, max_y, convex=True)
+        return self.draw_fb_pixels(min_x, max_x, min_y, max_y, convex=True)
 
     def draw_poly(self, x, y, coords, fill=True, convex=False):
         coord_array = array("i", coords)
@@ -369,14 +337,13 @@ class MonoFrameBufRenderer(Renderer):
         y_max = max([coord_array[i] for i in range(1, coord_len, 2)])
         self.mono_fb.fill_rect(x, y, x_max - x + 1, y_max - y + 1, 0)
         self.mono_fb.poly(x, y, coord_array, fill)
-        yield from self.draw_fb_pixels(x, x_max, y, y_max, convex)
+        return self.draw_fb_pixels(x, x_max, y, y_max, convex)
 
     def draw_ellipse(self, x, y, rx, ry, fill=True):
-        rect_buf = self.rect_buf
+        rect_buf = RectArray()
         # Fill the top-left quadrant and use that to draw the whole shape
         self.mono_fb.fill_rect(x - rx, y - ry, rx, ry, 0)
         self.mono_fb.ellipse(x, y, rx, ry, 1, False, 2)
-
         # For each row and column
         rect_height = ry * 2 if fill else 1
         for buf_y in range(y-ry,y):
@@ -386,19 +353,20 @@ class MonoFrameBufRenderer(Renderer):
                 continue
             rect_width = rect_end_x - rect_start_x + 1
             # Draw the left rectangle
-            rect_buf.add(rect_start_x, buf_y, rect_width, rect_height)
-            # Draw the right rectangle
-            rect_buf.add(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height)
+            rect_buf.extend(RectArray((
+                rect_start_x, buf_y, rect_width, rect_height,
+                x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height
+            )))
 
             if fill is False:
                 # Draw the left bottom rectangle
-                rect_buf.add(rect_start_x, y + (y - buf_y), rect_width, rect_height)
-                # Draw the right bottom rectangle
-                rect_buf.add(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height)
+                rect_buf.extend(RectArray((
+                    rect_start_x, y + (y - buf_y), rect_width, rect_height,
+                    x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height
+                )))
             else:
                 rect_height -= 2
-        yield self.rect_buf_ref[0:rect_buf.pos]
-        self.rect_buf.clear()
+        return memoryview(rect_buf)
 
     def draw_svg(self, svg):
         for shape in svg.shapes:
@@ -567,14 +535,12 @@ class ST7735:
     def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
         if isinstance(c, int):
             c = int16_to_bytes(c)
-        for b in self.renderer.draw_rect(x, y, w, h, fill, thickness):
-            self.send_rects(b, c)
+        self.send_rects(self.renderer.draw_rect(x, y, w, h, fill, thickness), c)
 
     def draw_text(self, text, x, y, c: int | bytes):
         if isinstance(c, int):
             c = int16_to_bytes(c)
-        for b in self.renderer.draw_text(text, x, y):
-            self.send_rects(b, c)
+        self.send_rects(self.renderer.draw_text(text, x, y), c)
 
     def draw_hline(self, x, y, w, c: int | bytes):
         if isinstance(c, int):
@@ -589,25 +555,22 @@ class ST7735:
     def draw_line(self, x1, y1, x2, y2, c: int | bytes):
         if isinstance(c, int):
             c = int16_to_bytes(c)
-        for b in self.renderer.draw_line(x1, y1, x2, y2):
-            self.send_rects(b, c)
+        self.send_rects(self.renderer.draw_line(x1, y1, x2, y2), c)
 
     def draw_poly(self, x, y, coords, c: int | bytes, fill=True, convex=False):
         if isinstance(c, int):
             c = int16_to_bytes(c)
-        for b in self.renderer.draw_poly(x, y, coords, fill, convex):
-            self.send_rects(b, c)
+        self.send_rects(self.renderer.draw_poly(x, y, coords, fill, convex), c)
 
     def draw_ellipse(self, x, y, rx, ry, c: int | bytes, fill = True):
         if isinstance(c, int):
             c = int16_to_bytes(c)
-        for b in self.renderer.draw_ellipse(x, y, rx, ry, fill):
-            self.send_rects(b, c)
+        self.send_rects(self.renderer.draw_ellipse(x, y, rx, ry, fill), c)
 
     def draw_svg(self, svg):
         for c, b in self.renderer.draw_svg(svg):
             if isinstance(c, int):
                 c = int16_to_bytes(c)
-            self.send_rects(b, c)
+            self.send_rects(bytearray(), c)
         
         
