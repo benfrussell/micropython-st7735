@@ -266,6 +266,14 @@ class MonoFrameBufRenderer(Renderer):
                 if convex:
                     break
         return memoryview(rect_buf)
+    
+    @staticmethod
+    def cull_rect(x, y, w, h, bound_left, bound_top, bound_right, bound_bottom):
+        new_x = max(x, bound_left)
+        new_y = max(y, bound_top)
+        new_w = min(x + w, bound_right) - new_x
+        new_h = min(y + h, bound_bottom) - new_y
+        return bytes((new_x, new_y, new_w, new_h))
 
     def draw_rect(self, x, y, w, h, fill=True, thickness=1):
         if fill:
@@ -273,15 +281,17 @@ class MonoFrameBufRenderer(Renderer):
         else:
             # Broken
             half_thick = int(thickness / 2)
-            l_edge = max(0, x - half_thick)
-            t_edge = max(0, y - half_thick)
+            width = self.width
+            height = self.height
+            cull = self.cull_rect
+
             # Top, left, bottom, right
-            return memoryview(RectArray((
-                l_edge, t_edge, w + thickness, thickness,
-                l_edge, t_edge + h, w + thickness, thickness,
-                l_edge, y + half_thick, thickness, h - thickness,
-                x + w - half_thick, y + half_thick, thickness, h - thickness
-            )))
+            return memoryview(RectArray(b''.join((
+                cull(x - half_thick, y - half_thick, thickness, h + thickness, 0, 0, width, height),
+                cull(x + half_thick, y - half_thick, w - thickness, thickness, 0, 0, width, height),
+                cull(x + w - half_thick, y - half_thick, thickness, h + thickness, 0, 0, width, height),
+                cull(x + half_thick, y + h - half_thick, w - thickness, thickness, 0, 0, width, height)
+            ))))
 
     # Draw text using the font cache
     def draw_text(self, text: str, x, y):
@@ -301,8 +311,8 @@ class MonoFrameBufRenderer(Renderer):
                     num_rects = cache_ref[font_cache_pos]
                     symbol_rects = cache_ref[font_cache_pos + 1:font_cache_pos + 1 + (4 * num_rects)]
                     for r in range(num_rects):
-                        symbol_rects[(r * 4)] += x_pos
-                        symbol_rects[(r * 4) + 1] += y
+                        symbol_rects[r * 4] += x_pos
+                        symbol_rects[r * 4 + 1] += y
                     rect_buf.extend(symbol_rects)
             else:
                 mono_fb.fill_rect(x, y, 8, 8, 0)
