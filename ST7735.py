@@ -104,7 +104,7 @@ bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
 bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
 
 def int16_to_bytes(i: int):
-    return bytes([(i >> 8) & 0xFF, i & 0xFF])
+    return bytes(((i >> 8) & 0xFF, i & 0xFF))
 
 def rgb_to_565(rgb):
     r, g, b = rgb
@@ -205,7 +205,7 @@ class MonoFrameBufRenderer(Renderer):
         self.height = height
         self.mono_fb = MonoFrameBuffer(self.width, self.height)
 
-        self.font_cache : array
+        self.font_cache : RectArray
         self.font_cache_lookup : array
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
@@ -257,7 +257,7 @@ class MonoFrameBufRenderer(Renderer):
             font_cache_pos += len_char_rects + 1
             all_rects += [int(len(char_rects) / 4)] + char_rects
 
-        self.font_cache = array("B", all_rects)
+        self.font_cache = RectArray(all_rects)
 
     # Draw the pixels in the region defined in the frame buffer
     def draw_fb_pixels(self, start_x, end_x, start_y, end_y, convex=False):
@@ -289,18 +289,19 @@ class MonoFrameBufRenderer(Renderer):
     # Draw text using the font cache
     def draw_text(self, text: str, x, y):
         x_pos = x
-        cache_len = len(self.font_cache_lookup)
+        cache_lookup_len = len(self.font_cache_lookup)
         rect_buf = RectArray()
+        cache_ref = memoryview(self.font_cache)
         
         for symbol in text:
             symbol_ord = ord(symbol)
-            if symbol_ord < cache_len:
+            if symbol_ord < cache_lookup_len:
                 # Use the lookup to find where the data for this character is in the font cache
                 font_cache_pos = self.font_cache_lookup[symbol_ord]
                 if font_cache_pos > -1:
                     # The first byte tells you how many rectangles are in this character
-                    num_rects = self.font_cache[font_cache_pos]
-                    symbol_rects = self.font_cache[font_cache_pos + 1:font_cache_pos + 1 + (4 * num_rects)]
+                    num_rects = cache_ref[font_cache_pos]
+                    symbol_rects = cache_ref[font_cache_pos + 1:font_cache_pos + 1 + (4 * num_rects)]
                     for r in range(num_rects):
                         symbol_rects[(r * 4)] = symbol_rects[(r * 4)] + x_pos
                         symbol_rects[(r * 4) + 1] = symbol_rects[(r * 4) + 1] + y
@@ -369,60 +370,68 @@ class MonoFrameBufRenderer(Renderer):
         return memoryview(rect_buf)
 
     def draw_svg(self, svg):
+        data = []
         for shape in svg.shapes:
             name = shape.name
             if name is "rect":
                 if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
-                    c = rgb_to_565(shape.attributes['fill'])
-                    yield (c, bytes((
-                        shape.attributes['x'],
-                        shape.attributes['y'],
-                        shape.attributes['width'],
-                        shape.attributes['height']
-                    )))
+                    data.append((
+                        rgb_to_565(shape.attributes['fill']), 
+                        RectArray((
+                            shape.attributes['x'],
+                            shape.attributes['y'],
+                            shape.attributes['width'],
+                            shape.attributes['height']
+                        ))
+                    ))
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    c = rgb_to_565(shape.attributes['stroke'])
-                    iterator = self.draw_rect(
-                        shape.attributes['x'], 
-                        shape.attributes['y'],
-                        shape.attributes['width'],
-                        shape.attributes['height'],
-                        fill=False,
-                        thickness=shape.attributes['stroke-width'])
-                    for i in iterator:
-                        yield (c, i)
+                    data.append((
+                        rgb_to_565(shape.attributes['stroke']),
+                        self.draw_rect(
+                            shape.attributes['x'], 
+                            shape.attributes['y'],
+                            shape.attributes['width'],
+                            shape.attributes['height'],
+                            fill=False,
+                            thickness=shape.attributes['stroke-width']
+                        )
+                    ))
             elif name is "circle" or name is "ellipse":
                 rx = shape.attributes['rx'] if name is "ellipse" else shape.attributes['r']
                 ry = shape.attributes['ry'] if name is "ellipse" else shape.attributes['r']
                 if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
-                    c = rgb_to_565(shape.attributes['fill'])
-                    iterator = self.draw_ellipse(
-                        shape.attributes['cx'], 
-                        shape.attributes['cy'], 
-                        rx, 
-                        ry)
-                    for i in iterator:
-                        yield (c, i)
+                    data.append((
+                        rgb_to_565(shape.attributes['fill']),
+                        self.draw_ellipse(
+                            shape.attributes['cx'], 
+                            shape.attributes['cy'], 
+                            rx, 
+                            ry
+                        )
+                    ))
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    c = rgb_to_565(shape.attributes['stroke'])
-                    iterator = self.draw_ellipse(
-                        shape.attributes['cx'], 
-                        shape.attributes['cy'], 
-                        rx, 
-                        ry, 
-                        False)
-                    for i in iterator:
-                        yield (c, i)
+                    data.append((
+                        rgb_to_565(shape.attributes['stroke']),
+                        self.draw_ellipse(
+                            shape.attributes['cx'], 
+                            shape.attributes['cy'], 
+                            rx, 
+                            ry, 
+                            False
+                        )
+                    ))
             elif name is "line":
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
-                    c = rgb_to_565(shape.attributes['stroke'])
-                    iterator = self.draw_line(
-                        shape.attributes['x1'], 
-                        shape.attributes['y1'], 
-                        shape.attributes['x2'], 
-                        shape.attributes['y2'])
-                    for i in iterator:
-                        yield (c, i)
+                    data.append((
+                        rgb_to_565(shape.attributes['stroke']),
+                        self.draw_line(
+                            shape.attributes['x1'], 
+                            shape.attributes['y1'], 
+                            shape.attributes['x2'], 
+                            shape.attributes['y2']
+                        )
+                    ))
+        return data
         
 class ST7735:
     def __init__(self, dc, cs, rt, sck, mosi, miso, spi_port, baud=62_500_000, height=160, width=80, cache_font=True, renderer: Renderer | None = None):
@@ -497,8 +506,10 @@ class ST7735:
         cs_pin = self.cs_pin
         spi = self.spi
         dc_pin = self.dc_pin
-        i = 0
         size = len(data)
+        i = 0
+        caset_args = bytearray((0,) * 4)
+        raset_args = bytearray((0,) * 4)
 
         while i < size:
             x = data[i]
@@ -571,6 +582,6 @@ class ST7735:
         for c, b in self.renderer.draw_svg(svg):
             if isinstance(c, int):
                 c = int16_to_bytes(c)
-            self.send_rects(bytearray(), c)
+            self.send_rects(b, c)
         
         
