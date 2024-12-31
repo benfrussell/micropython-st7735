@@ -4,45 +4,45 @@ import framebuf
 from array import array
 from math import ceil, log2, floor
 
-ST7735_NOP          = const(0x00)
-ST7735_SWRESET      = const(0x01)
-ST7735_RDDID        = const(0x04)
-ST7735_RDDST        = const(0x09)
-ST7735_SLPIN        = const(0x10)
-ST7735_SLPOUT       = const(0x11)
-ST7735_PTLON        = const(0x12)
-ST7735_NORON        = const(0x13)
-ST7735_INVOFF       = const(0x20)
-ST7735_INVON        = const(0x21)
-ST7735_DISPOFF      = const(0x28)
-ST7735_DISPON       = const(0x29)
-ST7735_CASET        = const(0x2A)
-ST7735_RASET        = const(0x2B)
-ST7735_RAMWR        = const(0x2C)
-ST7735_RAMRD        = const(0x2E)
-ST7735_PTLAR        = const(0x30)
-ST7735_VSCRDEF      = const(0x33)
-ST7735_COLMOD       = const(0x3A)
-ST7735_MADCTL       = const(0x36)
-ST7735_VSCRSADD     = const(0x37)
-ST7735_FRMCTR1      = const(0xB1)
-ST7735_FRMCTR2      = const(0xB2)
-ST7735_FRMCTR3      = const(0xB3)
-ST7735_INVCTR       = const(0xB4)
-ST7735_DISSET5      = const(0xB6)
-ST7735_PWCTR1       = const(0xC0)
-ST7735_PWCTR2       = const(0xC1)
-ST7735_PWCTR3       = const(0xC2)
-ST7735_PWCTR4       = const(0xC3)
-ST7735_PWCTR5       = const(0xC4)
-ST7735_VMCTR1       = const(0xC5)
-ST7735_RDID1        = const(0xDA)
-ST7735_RDID2        = const(0xDB)
-ST7735_RDID3        = const(0xDC)
-ST7735_RDID4        = const(0xDD)
-ST7735_PWCTR6       = const(0xFC)
-ST7735_GMCTRP1      = const(0xE0)
-ST7735_GMCTRN1      = const(0xE1)
+ST7735_NOP          = const(b'\x00')
+ST7735_SWRESET      = const(b'\x01')
+ST7735_RDDID        = const(b'\x04')
+ST7735_RDDST        = const(b'\x09')
+ST7735_SLPIN        = const(b'\x10')
+ST7735_SLPOUT       = const(b'\x11')
+ST7735_PTLON        = const(b'\x12')
+ST7735_NORON        = const(b'\x13')
+ST7735_INVOFF       = const(b'\x20')
+ST7735_INVON        = const(b'\x21')
+ST7735_DISPOFF      = const(b'\x28')
+ST7735_DISPON       = const(b'\x29')
+ST7735_CASET        = const(b'\x2A')
+ST7735_RASET        = const(b'\x2B')
+ST7735_RAMWR        = const(b'\x2C')
+ST7735_RAMRD        = const(b'\x2E')
+ST7735_PTLAR        = const(b'\x30')
+ST7735_VSCRDEF      = const(b'\x33')
+ST7735_COLMOD       = const(b'\x3A')
+ST7735_MADCTL       = const(b'\x36')
+ST7735_VSCRSADD     = const(b'\x37')
+ST7735_FRMCTR1      = const(b'\xB1')
+ST7735_FRMCTR2      = const(b'\xB2')
+ST7735_FRMCTR3      = const(b'\xB3')
+ST7735_INVCTR       = const(b'\xB4')
+ST7735_DISSET5      = const(b'\xB6')
+ST7735_PWCTR1       = const(b'\xC0')
+ST7735_PWCTR2       = const(b'\xC1')
+ST7735_PWCTR3       = const(b'\xC2')
+ST7735_PWCTR4       = const(b'\xC3')
+ST7735_PWCTR5       = const(b'\xC4')
+ST7735_VMCTR1       = const(b'\xC5')
+ST7735_RDID1        = const(b'\xDA')
+ST7735_RDID2        = const(b'\xDB')
+ST7735_RDID3        = const(b'\xDC')
+ST7735_RDID4        = const(b'\xDD')
+ST7735_PWCTR6       = const(b'\xFC')
+ST7735_GMCTRP1      = const(b'\xE0')
+ST7735_GMCTRN1      = const(b'\xE1')
 
 init_cmds = [
     # SLPOUT - Sleep out & booster on
@@ -102,9 +102,6 @@ init_cmds = [
 
 bitmask = const((128, 64, 32, 16, 8, 4, 2, 1))
 bitmask_inv = const((127, 191, 223, 239, 247, 251, 253, 254))
-
-def int16_to_bytes(i: int):
-    return bytes(((i >> 8) & 0xFF, i & 0xFF))
 
 def rgb_to_565(rgb):
     r, g, b = rgb
@@ -292,6 +289,7 @@ class MonoFrameBufRenderer(Renderer):
         cache_lookup_len = len(self.font_cache_lookup)
         rect_buf = RectArray()
         cache_ref = memoryview(self.font_cache)
+        mono_fb = self.mono_fb
         
         for symbol in text:
             symbol_ord = ord(symbol)
@@ -303,12 +301,12 @@ class MonoFrameBufRenderer(Renderer):
                     num_rects = cache_ref[font_cache_pos]
                     symbol_rects = cache_ref[font_cache_pos + 1:font_cache_pos + 1 + (4 * num_rects)]
                     for r in range(num_rects):
-                        symbol_rects[(r * 4)] = symbol_rects[(r * 4)] + x_pos
-                        symbol_rects[(r * 4) + 1] = symbol_rects[(r * 4) + 1] + y
+                        symbol_rects[(r * 4)] += x_pos
+                        symbol_rects[(r * 4) + 1] += y
                     rect_buf.extend(symbol_rects)
             else:
-                self.mono_fb.fill_rect(x, y, 8, 8, 0)
-                self.mono_fb.text(text, x, y, 1)
+                mono_fb.fill_rect(x, y, 8, 8, 0)
+                mono_fb.text(text, x, y, 1)
                 rect_buf.extend(self.draw_fb_pixels(x, x + 8, y, y + 8))
 
             x_pos += 8
@@ -456,27 +454,32 @@ class ST7735:
         else:
             self.renderer = renderer
 
-    def send_command(self, cmd, args = None):
-        self.cs_pin.low()
-        self.dc_pin.low()
-        self.spi.write(bytes([cmd]))
-        self.cs_pin.high()
-        self.dc_pin.high()
+    def send_command(self, cmd : bytes, args : bytes | None = None):
+        cs_pin = self.cs_pin
+        dc_pin = self.dc_pin
+        spi = self.spi
+
+        cs_pin.low()
+        dc_pin.low()
+        spi.write(cmd)
+        cs_pin.high()
+        dc_pin.high()
 
         if args is not None and len(args) > 0:
-            self.cs_pin.low()
-            self.spi.write(bytes(args))
-            self.cs_pin.high()
-            self.dc_pin.high()
+            cs_pin.low()
+            spi.write(args)
+            cs_pin.high()
+            dc_pin.high()
 
     def tft_initialize(self):
+        send_cmd = self.send_command
         self.rt_pin.low()
         time.sleep_ms(100)
         self.rt_pin.high()
         time.sleep_ms(220)
 
         for cmd in init_cmds:
-            self.send_command(cmd[0], None if len(cmd) == 1 else cmd[1:])
+            send_cmd(cmd[0], None if len(cmd) == 1 else bytes(cmd[1:]))
 
     def set_rotation(self, rotation, mirror_x=False, mirror_y=False):
         r = rotation % 4
@@ -496,7 +499,7 @@ class ST7735:
             madctl_arg = madctl_arg ^ 0x40
         if mirror_y:
             madctl_arg = madctl_arg ^ 0x80
-        self.send_command(ST7735_MADCTL, [madctl_arg])
+        self.send_command(ST7735_MADCTL, bytes(madctl_arg))
 
     def send_rects(self, data: bytes, c: bytes):
         # Local copy of functions for performance
@@ -504,84 +507,66 @@ class ST7735:
         r_offset = self.r_offset
         send_cmd = self.send_command
         cs_pin = self.cs_pin
-        spi = self.spi
         dc_pin = self.dc_pin
         size = len(data)
         i = 0
-        caset_args = bytearray((0,) * 4)
-        raset_args = bytearray((0,) * 4)
 
         while i < size:
             x = data[i]
             y = data[i + 1]
             w = data[i + 2]
             h = data[i + 3]
-            # Set column range
-            caset_args = b''.join((
-                int16_to_bytes(c_offset + x),
-                int16_to_bytes(c_offset + x + w - 1)
+            caset_args = bytes((
+                ((c_offset + x) >> 8) & 0xFF,
+                (c_offset + x) & 0xFF,
+                ((c_offset + x + w - 1) >> 8) & 0xFF,
+                (c_offset + x + w - 1) & 0xFF
             ))
             send_cmd(ST7735_CASET, caset_args)
             # Set row range
             
-            raset_args = b''.join((
-                int16_to_bytes(r_offset + y),
-                int16_to_bytes(r_offset + y + h - 1)
+            raset_args = bytes((
+                ((r_offset + y) >> 8) & 0xFF,
+                (r_offset + y) & 0xFF,
+                ((r_offset + y + h - 1) >> 8) & 0xFF,
+                (r_offset + y + h - 1) & 0xFF
             ))
             send_cmd(ST7735_RASET, raset_args)
             # Start memory write
             send_cmd(ST7735_RAMWR)
 
             cs_pin.low()
-            spi.write(c * (w * h))
+            self.spi.write(c * (w * h))
             cs_pin.high()
             dc_pin.high()
             i += 4
 
-    def fill_screen(self, c: int | bytes):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def fill_screen(self, c: bytes):
         self.send_rects(bytes((0, 0, self.width, self.height)), c)
 
-    def draw_rect(self, x, y, w, h, c: int | bytes, fill=True, thickness=1):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_rect(self, x, y, w, h, c: bytes, fill=True, thickness=1):
         self.send_rects(self.renderer.draw_rect(x, y, w, h, fill, thickness), c)
 
-    def draw_text(self, text, x, y, c: int | bytes):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_text(self, text, x, y, c: bytes):
         self.send_rects(self.renderer.draw_text(text, x, y), c)
 
-    def draw_hline(self, x, y, w, c: int | bytes):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_hline(self, x, y, w, c: bytes):
         self.send_rects(self.renderer.draw_hline(x, y, w), c)
 
-    def draw_vline(self, x, y, h, c: int | bytes):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_vline(self, x, y, h, c: bytes):
         self.send_rects(self.renderer.draw_vline(x, y, h), c)
 
-    def draw_line(self, x1, y1, x2, y2, c: int | bytes):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_line(self, x1, y1, x2, y2, c: bytes):
         self.send_rects(self.renderer.draw_line(x1, y1, x2, y2), c)
 
-    def draw_poly(self, x, y, coords, c: int | bytes, fill=True, convex=False):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_poly(self, x, y, coords, c: bytes, fill=True, convex=False):
         self.send_rects(self.renderer.draw_poly(x, y, coords, fill, convex), c)
 
-    def draw_ellipse(self, x, y, rx, ry, c: int | bytes, fill = True):
-        if isinstance(c, int):
-            c = int16_to_bytes(c)
+    def draw_ellipse(self, x, y, rx, ry, c: bytes, fill = True):
         self.send_rects(self.renderer.draw_ellipse(x, y, rx, ry, fill), c)
 
     def draw_svg(self, svg):
         for c, b in self.renderer.draw_svg(svg):
-            if isinstance(c, int):
-                c = int16_to_bytes(c)
             self.send_rects(b, c)
         
         

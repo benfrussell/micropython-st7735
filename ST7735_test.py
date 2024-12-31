@@ -4,7 +4,7 @@ import random
 from ST7735 import ST7735
 from svg import SVG
 
-def random_16bit_color():
+def random_16bit_color() -> bytes:
     # Generate random values for red, green, and blue components
     red = random.randint(0, 31)    # 5 bits (0 to 31)
     green = random.randint(0, 63)  # 6 bits (0 to 63)
@@ -13,7 +13,7 @@ def random_16bit_color():
     # Combine the color components into a 16-bit color representation
     color_16bit = (red << 11) | (green << 5) | blue
 
-    return color_16bit
+    return color_16bit.to_bytes(2, 'big')
 
 def test_tft(tft):
     tft.tft_initialize()
@@ -35,37 +35,37 @@ def test_tft(tft):
     test_poly(tft)
     time.sleep_ms(1500)
 
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
 
     start = time.ticks_ms()
     t = 1
     while t <= 40:
-        tft.draw_rect(0, 0, 80, 160, 0x0000, False, t)
+        tft.draw_rect(0, 0, 80, 160, b'\x00\x00', False, t)
         t += 1
     print(f"Rect outline time: {time.ticks_diff(time.ticks_ms(), start) / 40} ms")
     time.sleep_ms(1500)
 
 def test_text(tft):
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
 
     start = time.ticks_ms()
     for r in range(11):
         text = "".join([chr(ci) for ci in range(33 + (r * 9), 42 + (r * 9))])
-        tft.draw_text(text, 5, r * 8 + 5, 0x0000)
+        tft.draw_text(text, 5, r * 8 + 5, b'\x00\x00')
     print(f"Text time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_ellipses(tft):
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
     start = time.ticks_ms()
-    tft.draw_ellipse(40, 40, 37, 37, 0xF000, fill=False)
+    tft.draw_ellipse(40, 40, 37, 37, b'\xF0\x00', fill=False)
     print(f"Ellipse outline time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
     start = time.ticks_ms()
-    tft.draw_ellipse(40, 120, 37, 37, 0xF000)
+    tft.draw_ellipse(40, 120, 37, 37, b'\xF0\x00')
     print(f"Ellipse fill time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_lines(tft):
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
     start = time.ticks_ms()
     lines = 20
     while lines > 0:
@@ -74,9 +74,9 @@ def test_lines(tft):
     print(f"Line time: {time.ticks_diff(time.ticks_ms(), start) / 20} ms")
 
 def test_poly(tft):
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
     start = time.ticks_ms()
-    tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], 0xAAAA, True, False)
+    tft.draw_poly(0, 0, [18, 70, 33, 70, 40, 55, 47, 70, 62, 70, 51, 78, 58, 94, 40, 82, 22, 94, 29, 78], b'\xAA\xAA', True, False)
     print(f"Poly time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
 def test_rotation(tft):
@@ -109,7 +109,7 @@ def test_svg(tft):
     with open("test.svg") as f:
         svg_test = SVG.read_svg(f)
     tft.set_rotation(1)
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
 
     start = time.ticks_ms()
     tft.draw_svg(svg_test)
@@ -120,7 +120,7 @@ def test_svg(tft):
     print(f"Cache svg time: {time.ticks_diff(time.ticks_ms(), start)} ms")
 
     time.sleep(0.5)
-    tft.fill_screen(0xffff)
+    tft.fill_screen(b'\xff\xff')
 
     start = time.ticks_ms()
     tft.draw_cached_svg(c_svg)
