@@ -208,25 +208,27 @@ class MonoFrameBufRenderer(Renderer):
             self.font_cache_lookup = array("h", 127 * [0])
             self.build_font_cache()
 
+    # Helper function for checking if a line of pixels can extend down one level
+    def can_expand_line_down(self, start_x, end_x, y):
+        for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
+            return line_start_x == start_x and line_end_x == end_x
+
+    def get_expanded_rect(self, start_x, end_x, y):
+        can_expand_down = self.can_expand_line_down
+        h = 1
+        next_row = y + 1
+        while can_expand_down(start_x, end_x, next_row):
+            # If it did expand down, unset the pixels expanded
+            for exp_x in range(start_x, end_x + 1):
+                self.mono_fb.set_px(exp_x, next_row, 0)
+            next_row += 1
+            h += 1
+        return (start_x, y, end_x - start_x + 1, h)
+
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
     def find_rects_in_fb(self, start_x, end_x, start_y, end_y):
-        # Helper function for checking if a line of pixels can extend down one level
-        def can_expand_down(start_x, end_x, y):
-            for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
-                return line_start_x == start_x and line_end_x == end_x
-
-        def get_expanded_rect(start_x, end_x, y):
-            h = 1
-            next_row = y + 1
-            while can_expand_down(start_x, end_x, next_row):
-                # If it did expand down, unset the pixels expanded
-                for exp_x in range(start_x, end_x + 1):
-                    self.mono_fb.set_px(exp_x, next_row, 0)
-                next_row += 1
-                h += 1
-            return (start_x, y, end_x - start_x + 1, h)
-    
+        get_expanded_rect = self.get_expanded_rect
         rects = []
         # For each row and column
         for y in range(start_y,end_y+1):
