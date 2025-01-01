@@ -193,8 +193,26 @@ class MonoFrameBuffer(framebuf.FrameBuffer):
         else:
             buf[pos] = buf[pos] | bitmask[mod]
 
-class RectArray(bytearray):
-    pass
+class Rect(bytearray):
+    def __init__(self, x, y, w, h):
+        super().__init__((x, y, w, h))
+
+    @property
+    def x(self):
+        return self[0]
+
+    @property
+    def y(self):
+        return self[1]
+
+    @property
+    def w(self):
+        return self[2]
+
+    @property
+    def h(self):
+        return self[3]
+        
         
 class MonoFrameBufRenderer(Renderer):
     def __init__(self, width, height, cache_font) -> None:
@@ -202,7 +220,7 @@ class MonoFrameBufRenderer(Renderer):
         self.height = height
         self.mono_fb = MonoFrameBuffer(self.width, self.height)
 
-        self.font_cache : RectArray
+        self.font_cache : bytearray
         self.font_cache_lookup : array
         if cache_font:
             self.font_cache_lookup = array("h", 127 * [0])
@@ -213,7 +231,7 @@ class MonoFrameBufRenderer(Renderer):
         for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
             return line_start_x == start_x and line_end_x == end_x
 
-    def get_expanded_rect(self, start_x, end_x, y):
+    def get_expanded_rect(self, start_x, end_x, y) -> Rect:
         can_expand_down = self.can_expand_line_down
         h = 1
         next_row = y + 1
@@ -223,23 +241,23 @@ class MonoFrameBufRenderer(Renderer):
                 self.mono_fb.set_px(exp_x, next_row, 0)
             next_row += 1
             h += 1
-        return (start_x, y, end_x - start_x + 1, h)
+        return Rect(start_x, y, end_x - start_x + 1, h)
 
     # Compose the pixels in the framebuffer into rectangles. Used for faster drawing.
     # Return format is a list of bytes in the format [rect1_x, rect1_y, rect1_w, rect1_h, rect2_x...]
     def find_rects_in_fb(self, start_x, end_x, start_y, end_y):
         get_expanded_rect = self.get_expanded_rect
-        rects = []
+        rects = bytearray()
         # For each row and column
         for y in range(start_y,end_y+1):
             for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
-                rects += get_expanded_rect(line_start_x, line_end_x, y)
+                rects.extend(get_expanded_rect(line_start_x, line_end_x, y))
         return rects
         
     # Draw each ASCII characters 33-126, decompose the characters into rectangles, and cache them for faster drawing
     def build_font_cache(self):
         font_cache_pos = 0
-        all_rects = []
+        font_cache = bytearray()
 
         for c in range(127):
             if c < 33:
@@ -254,20 +272,21 @@ class MonoFrameBufRenderer(Renderer):
             self.font_cache_lookup[c] = font_cache_pos
             len_char_rects = len(char_rects)
             font_cache_pos += len_char_rects + 1
-            all_rects += [int(len(char_rects) / 4)] + char_rects
-
-        self.font_cache = RectArray(all_rects)
+            font_cache += int(len_char_rects / 4).to_bytes(1, 'big')
+            font_cache += char_rects
+            
+        self.font_cache = font_cache
 
     # Draw the pixels in the region defined in the frame buffer
     def draw_fb_pixels(self, start_x, end_x, start_y, end_y, convex=False):
-        rect_buf = RectArray()
+        rect_buf = bytearray()
         for y in range(start_y, end_y + 1):
             for line_start_x,line_end_x in self.mono_fb.lines_in_row(y, start_x, end_x):
                 draw_width = line_end_x - line_start_x + 1
-                rect_buf.extend(RectArray((line_start_x, y, draw_width, 1)))
+                rect_buf.extend(Rect(line_start_x, y, draw_width, 1))
                 if convex:
                     break
-        return memoryview(rect_buf)
+        return rect_buf
     
     @staticmethod
     def cull_rect(x, y, w, h, bound_left, bound_top, bound_right, bound_bottom):
@@ -275,11 +294,11 @@ class MonoFrameBufRenderer(Renderer):
         new_y = max(y, bound_top)
         new_w = min(x + w, bound_right) - new_x
         new_h = min(y + h, bound_bottom) - new_y
-        return bytes((new_x, new_y, new_w, new_h))
+        return Rect(new_x, new_y, new_w, new_h)
 
     def draw_rect(self, x, y, w, h, fill=True, thickness=1):
         if fill:
-            return memoryview(RectArray((x, y, w, h)))
+            return bytearray(Rect(x, y, w, h))
         else:
             # Broken
             half_thick = int(thickness / 2)
@@ -288,18 +307,18 @@ class MonoFrameBufRenderer(Renderer):
             cull = self.cull_rect
 
             # Top, left, bottom, right
-            return memoryview(RectArray(b''.join((
+            return bytearray().join((
                 cull(x - half_thick, y - half_thick, thickness, h + thickness, 0, 0, width, height),
                 cull(x + half_thick, y - half_thick, w - thickness, thickness, 0, 0, width, height),
                 cull(x + w - half_thick, y - half_thick, thickness, h + thickness, 0, 0, width, height),
                 cull(x + half_thick, y + h - half_thick, w - thickness, thickness, 0, 0, width, height)
-            ))))
+            ))
 
     # Draw text using the font cache
     def draw_text(self, text: str, x, y):
         x_pos = x
         cache_lookup_len = len(self.font_cache_lookup)
-        rect_buf = RectArray()
+        rect_buf = bytearray()
         cache_ref = memoryview(self.font_cache)
         mono_fb = self.mono_fb
         
@@ -323,14 +342,14 @@ class MonoFrameBufRenderer(Renderer):
 
             x_pos += 8
             if x_pos > self.width:
-                return memoryview(rect_buf)
-        return memoryview(rect_buf)
+                return rect_buf
+        return rect_buf
 
     def draw_hline(self, x, y, w):
-        return memoryview(RectArray((x, y, w, 1)))
+        return memoryview(Rect(x, y, w, 1))
 
     def draw_vline(self, x, y, h):
-        return memoryview(RectArray((x, y, 1, h)))
+        return memoryview(Rect(x, y, 1, h))
 
     def draw_line(self, x1, y1, x2, y2):
         min_x = min(x1, x2)
@@ -351,7 +370,7 @@ class MonoFrameBufRenderer(Renderer):
         return self.draw_fb_pixels(x, x_max, y, y_max, convex)
 
     def draw_ellipse(self, x, y, rx, ry, fill=True):
-        rect_buf = RectArray()
+        rect_buf = bytearray()
         # Fill the top-left quadrant and use that to draw the whole shape
         self.mono_fb.fill_rect(x - rx, y - ry, rx, ry, 0)
         self.mono_fb.ellipse(x, y, rx, ry, 1, False, 2)
@@ -364,20 +383,16 @@ class MonoFrameBufRenderer(Renderer):
                 continue
             rect_width = rect_end_x - rect_start_x + 1
             # Draw the left rectangle
-            rect_buf.extend(RectArray((
-                rect_start_x, buf_y, rect_width, rect_height,
-                x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height
-            )))
+            rect_buf.extend(Rect(rect_start_x, buf_y, rect_width, rect_height))
+            rect_buf.extend(Rect(x + (x - (rect_start_x + rect_width)), buf_y, rect_width, rect_height))
 
             if fill is False:
                 # Draw the left bottom rectangle
-                rect_buf.extend(RectArray((
-                    rect_start_x, y + (y - buf_y), rect_width, rect_height,
-                    x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height
-                )))
+                rect_buf.extend(Rect(rect_start_x, y + (y - buf_y), rect_width, rect_height))
+                rect_buf.extend(Rect(x + (x - (rect_start_x + rect_width)), y + (y - buf_y), rect_width, rect_height))
             else:
                 rect_height -= 2
-        return memoryview(rect_buf)
+        return rect_buf
 
     def draw_svg(self, svg):
         data = []
@@ -387,12 +402,12 @@ class MonoFrameBufRenderer(Renderer):
                 if 'fill' in shape.attributes and shape.attributes['fill'] is not None:
                     data.append((
                         rgb_to_565(shape.attributes['fill']), 
-                        RectArray((
+                        Rect(
                             shape.attributes['x'],
                             shape.attributes['y'],
                             shape.attributes['width'],
                             shape.attributes['height']
-                        ))
+                        )
                     ))
                 if 'stroke' in shape.attributes and shape.attributes['stroke'] is not None:
                     data.append((
